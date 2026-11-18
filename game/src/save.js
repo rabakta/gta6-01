@@ -1,7 +1,11 @@
 // BRISA BAY — save / load. Progress lives in localStorage only; nothing
 // is sent anywhere. A save holds cash, the story chapter, owned weapons and
-// ammo, owned cars and the player's best stats.
-import { SAVE_KEY } from './config.js';
+// ammo, owned cars and the player's best stats. Loads are sanitised: a save
+// from an older build, or one a player edited by hand, can never hand the
+// game a weapon it does not own or a chapter past the end of the story.
+import { SAVE_KEY, MISSION_META, WEAPONS } from './config.js';
+
+export const SAVE_VERSION = 1;
 
 export function defaultSave() {
   return {
@@ -11,24 +15,68 @@ export function defaultSave() {
     currentWeapon: 'fists',
     armor: 0,
     ownedCars: [],
-    stats: { missionsDone: 0, carsStolen: 0, pedsHit: 0, copsDodged: 0, playSeconds: 0 },
+    stats: {
+      missionsDone: 0,
+      missionsFailed: 0,
+      carsStolen: 0,
+      pedsHit: 0,
+      copsDodged: 0,
+      playSeconds: 0,
+    },
   };
+}
+
+// Clamp a loaded blob back into shape. Returns a full, valid save.
+export function sanitizeSave(raw) {
+  const clean = defaultSave();
+  if (typeof raw !== 'object' || raw === null) return clean;
+  if (Number.isFinite(raw.cash)) clean.cash = Math.max(0, Math.floor(raw.cash));
+  if (Number.isFinite(raw.missionIndex)) {
+    clean.missionIndex = Math.max(0, Math.min(MISSION_META.length, Math.floor(raw.missionIndex)));
+  }
+  if (Number.isFinite(raw.armor)) clean.armor = Math.max(0, Math.min(100, raw.armor));
+  if (typeof raw.weapons === 'object' && raw.weapons !== null) {
+    for (const [key, w] of Object.entries(raw.weapons)) {
+      if (!WEAPONS[key] || typeof w !== 'object' || w === null) continue;
+      const ammo = WEAPONS[key].ammo === Infinity ? Infinity : Math.max(0, Math.floor(w.ammo ?? 0));
+      clean.weapons[key] = { owned: true, ammo };
+    }
+  }
+  if (typeof raw.currentWeapon === 'string' && clean.weapons[raw.currentWeapon]) {
+    clean.currentWeapon = raw.currentWeapon;
+  }
+  if (Array.isArray(raw.ownedCars)) clean.ownedCars = raw.ownedCars.filter((c) => typeof c === 'string');
+  if (typeof raw.stats === 'object' && raw.stats !== null) {
+    for (const key of Object.keys(clean.stats)) {
+      if (Number.isFinite(raw.stats[key])) clean.stats[key] = Math.max(0, Math.floor(raw.stats[key]));
+    }
+  }
+  return clean;
 }
 
 export function loadSave() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
-    const data = JSON.parse(raw);
-    if (typeof data !== 'object' || data === null) return null;
-    return { ...defaultSave(), ...data, stats: { ...defaultSave().stats, ...(data.stats || {}) } };
-  } catch (e) { return null; }
+    return sanitizeSave(JSON.parse(raw));
+  } catch (e) {
+    return null; // corrupt JSON or blocked storage: start fresh
+  }
 }
 
 export function writeSave(data) {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) { /* storage full/blocked: play on */ }
+  try {
+    data._v = SAVE_VERSION;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+  } catch (e) {
+    // Storage full or blocked: the game just plays on without saving.
+  }
 }
 
 export function clearSave() {
-  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    // Ignore: nothing to clear, or storage is unavailable.
+  }
 }

@@ -1,35 +1,19 @@
-// BRISA BAY — pedestrians: beach-goers and city folk who stroll the
-// sidewalks, scatter when a car mounts the kerb, and (in missions) fight back
-// as guards and rivals.
+// BRISA BAY — pedestrians: beach-goers and city walkers, plus the armed
+// guards missions spawn. A ped is a low-poly figure (torso, head, legs)
+// that strolls the sidewalks; danger nearby (a speeding car, gunfire, an
+// explosion) makes it flee, and a fleeing ped spreads the panic to the
+// walkers around it.
 import * as THREE from 'three';
 import { clamp, mulberry32, pick, dist2 } from './utils.js';
 import { resolveCircleCollisions } from './city.js';
 
 const SHIRTS = [0xd94f43, 0x4a6fa5, 0xe8c84a, 0x5a7d5a, 0xd98ab0, 0x7a5aa0, 0xe8e2d0, 0x3a3a3a];
 const SKINS = [0xc98d64, 0x8a5a3b, 0xe8b88a, 0x6b4226];
-
-function makePedMesh(shirtColor, skinColor) {
-  const g = new THREE.Group();
-  const shirt = new THREE.MeshLambertMaterial({ color: shirtColor });
-  const skin = new THREE.MeshLambertMaterial({ color: skinColor });
-  const pants = new THREE.MeshLambertMaterial({ color: pick(mulberry32(shirtColor), [0x2b3a55, 0x3a3a3a, 0x5a4a38]) });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.8, 0.3), shirt);
-  body.position.y = 1.0;
-  body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.36), skin);
-  head.position.y = 1.62;
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.65, 0.24), pants);
-  legL.position.set(-0.14, 0.32, 0);
-  const legR = legL.clone();
-  legR.position.x = 0.14;
-  g.add(body, head, legL, legR);
-  g.userData = { legL, legR };
-  return g;
-}
+const PANTS_COLOURS = [0x2b3a55, 0x3a3a3a, 0x5a4a38];
 
 export class Ped {
   constructor(scene, x, z, opts = {}) {
-    this.mesh = makePedMesh(opts.shirt ?? pick(mulberry32((x * 13 + z * 7) | 0), SHIRTS), opts.skin ?? pick(mulberry32((x * 7 + z * 13) | 0), SKINS));
+    this.scene = scene;
     this.pos = new THREE.Vector3(x, 0, z);
     this.heading = Math.random() * Math.PI * 2;
     this.speed = 0;
@@ -40,27 +24,47 @@ export class Ped {
     this.dead = false;
     this.fleeing = false;
     this.fleeFrom = null;
+    this.deadTimer = 0; // seconds since death; corpses are cleared by the manager
     this.phase = Math.random() * 6;
     this.shootTimer = 0;
+    // Build the figure: box torso and head, two legs that swing as it walks.
+    const rng = mulberry32((x * 13 + z * 7) | 0);
+    const shirt = new THREE.MeshLambertMaterial({ color: opts.shirt ?? pick(rng, SHIRTS) });
+    const skin = new THREE.MeshLambertMaterial({ color: opts.skin ?? pick(rng, SKINS) });
+    const pants = new THREE.MeshLambertMaterial({ color: pick(rng, PANTS_COLOURS) });
+    this.mesh = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.8, 0.3), shirt);
+    body.position.y = 1.0;
+    body.castShadow = true;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.36), skin);
+    head.position.y = 1.62;
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.65, 0.24), pants);
+    legL.position.set(-0.14, 0.32, 0);
+    const legR = legL.clone();
+    legR.position.x = 0.14;
+    this.mesh.add(body, head, legL, legR);
+    this.legs = [legL, legR];
     this.mesh.position.copy(this.pos);
     scene.add(this.mesh);
   }
 
   update(dt, world, danger) {
     if (this.dead) return;
-    // Flee from nearby danger (a speeding car, gunfire, an explosion).
+    // Flee from a danger zone (speeding car, gunfire, explosion): the
+    // caller passes {x, z, r} or null.
     if (danger && dist2(this.pos.x, this.pos.z, danger.x, danger.z) < danger.r) {
       this.fleeing = true;
       this.fleeFrom = danger;
     }
     if (this.fleeing) {
-      const dx = this.pos.x - this.fleeFrom.x, dz = this.pos.z - this.fleeFrom.z;
+      const dx = this.pos.x - this.fleeFrom.x;
+      const dz = this.pos.z - this.fleeFrom.z;
       const d = Math.hypot(dx, dz) || 1;
       this.heading = Math.atan2(dx / d, dz / d);
       this.speed = 4.5;
       if (dist2(this.pos.x, this.pos.z, this.fleeFrom.x, this.fleeFrom.z) > 30) this.fleeing = false;
     } else if (this.hostile) {
-      // Guards hold their post and strafe a little; they shoot in combat.js.
+      // Guards hold their post and strafe a little; they shoot in main.js.
       this.speed = 0;
       this.phase += dt * 2;
       this.pos.x += Math.sin(this.phase) * 0.15 * dt;
@@ -75,8 +79,8 @@ export class Ped {
     this.pos.x = clamp(this.pos.x, -210, 250);
     this.pos.z = clamp(this.pos.z, -210, 210);
     const swing = Math.sin(this.phase + dt * this.speed * 4) * 0.4;
-    this.mesh.userData.legL.rotation.x = swing;
-    this.mesh.userData.legR.rotation.x = -swing;
+    this.legs[0].rotation.x = swing;
+    this.legs[1].rotation.x = -swing;
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.heading;
     this.phase += dt * this.speed * 2;
@@ -95,6 +99,10 @@ export class Ped {
     }
     return false;
   }
+
+  dispose() {
+    this.scene.remove(this.mesh);
+  }
 }
 
 export class PedManager {
@@ -104,6 +112,7 @@ export class PedManager {
     this.peds = [];
   }
 
+  // Scatter peds on the sidewalks (9m off a road line) around a centre.
   spawn(count, center, radius) {
     const lines = this.world.roads;
     for (let i = 0; i < count; i++) {
@@ -116,6 +125,7 @@ export class PedManager {
     }
   }
 
+  // Armed guards for a mission step, standing at fixed posts.
   spawnGuards(positions, health = 60) {
     const guards = [];
     for (const p of positions) {
@@ -128,6 +138,26 @@ export class PedManager {
 
   update(dt, danger) {
     for (const p of this.peds) p.update(dt, this.world, danger);
+    // Panic chain: a fleeing ped spooks every walker within 6m, so the
+    // crowd bolts together instead of strolling through a shootout.
+    const runners = this.peds.filter((p) => !p.dead && p.fleeing && p.fleeFrom);
+    for (const p of this.peds) {
+      if (p.dead || p.fleeing || p.hostile) continue;
+      for (const r of runners) {
+        if (dist2(p.pos.x, p.pos.z, r.pos.x, r.pos.z) < 36) {
+          p.fleeing = true;
+          p.fleeFrom = r.fleeFrom;
+          break;
+        }
+      }
+    }
+    // Corpses clear themselves after 25s so the streets don't pile up.
+    for (const p of [...this.peds]) {
+      if (p.dead) {
+        p.deadTimer += dt;
+        if (p.deadTimer > 25) this.remove(p);
+      }
+    }
     // Prune the long-dead far from the player to keep the scene light.
     if (this.peds.length > 90) {
       this.peds = this.peds.filter((p) => !p.dead || Math.random() < 0.5);
@@ -135,7 +165,7 @@ export class PedManager {
   }
 
   remove(ped) {
-    this.scene.remove(ped.mesh);
+    ped.dispose();
     this.peds = this.peds.filter((p) => p !== ped);
   }
 }

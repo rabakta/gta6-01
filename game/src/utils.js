@@ -1,23 +1,68 @@
-// BRISA BAY — small math and random helpers shared by every system.
+// BRISA BAY — shared math, random and formatting helpers.
+// Every system imports from here, so nothing here knows about the game
+// itself: pure functions only, no DOM, no three.js.
 
-// Deterministic RNG so a scene can be re-staged exactly (screenshots).
+import { CITY } from './config.js';
+
+// ---------------------------------------------------------------------------
+// Deterministic random
+// ---------------------------------------------------------------------------
+
+// mulberry32: a tiny seeded PRNG. Scenes staged from a seed (city layout,
+// screenshots) come out identical on every run.
 export function mulberry32(seed) {
   let a = seed >>> 0;
-  return function () {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
+  return function next() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-export function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-export function lerp(a, b, t) { return a + (b - a) * t; }
-// Frame-rate independent smoothing: damp(current, target, lambda, dt).
-export function damp(a, b, lambda, dt) { return lerp(a, b, 1 - Math.exp(-lambda * dt)); }
-export function dist2(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return Math.sqrt(dx * dx + dz * dz); }
+// Uniform float in [lo, hi) and integer in [lo, hi] from a seeded stream.
+export function randRange(rng, lo, hi) { return lo + rng() * (hi - lo); }
+export function randInt(rng, lo, hi) { return lo + Math.floor(rng() * (hi - lo + 1)); }
 
-// Shortest signed turn from angle `from` to angle `to`.
+// True with probability `p` (0..1).
+export function chance(rng, p) { return rng() < p; }
+
+export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+
+// A random point inside a disc of `radius` around (cx, cz), uniform by area.
+export function randomPointInCircle(rng, cx, cz, radius) {
+  const a = rng() * Math.PI * 2;
+  const r = Math.sqrt(rng()) * radius;
+  return { x: cx + Math.sin(a) * r, z: cz + Math.cos(a) * r };
+}
+
+// ---------------------------------------------------------------------------
+// Clamping, interpolation, angles
+// ---------------------------------------------------------------------------
+
+export function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+export function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+// Linear blend and its frame-rate independent cousin: damp moves `a` toward
+// `b` so the gap shrinks by a fixed fraction per second, whatever the fps.
+export function lerp(a, b, t) { return a + (b - a) * t; }
+export function damp(a, b, lambda, dt) { return lerp(a, b, 1 - Math.exp(-lambda * dt)); }
+
+// Smooth 0..1 ramp between two edges (handy for fades and falloff).
+export function smoothstep(edge0, edge1, x) {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
+// Flat distance on the ground plane; the city is a 2D map with height paint.
+export function dist2(ax, az, bx, bz) {
+  const dx = ax - bx;
+  const dz = az - bz;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+// Shortest signed turn from angle `from` to angle `to`, in (-PI, PI].
 export function angleDiff(from, to) {
   let d = (to - from) % (Math.PI * 2);
   if (d > Math.PI) d -= Math.PI * 2;
@@ -26,20 +71,33 @@ export function angleDiff(from, to) {
 }
 export function angleLerp(a, b, t) { return a + angleDiff(a, b) * t; }
 
-export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+// ---------------------------------------------------------------------------
+// Headings: radians, 0 = facing -Z (north on the minimap).
+// ---------------------------------------------------------------------------
+
+export function headingToVector(h) { return { x: Math.sin(h), z: Math.cos(h) }; }
+export function vectorToHeading(x, z) { return Math.atan2(x, z); }
+
+// ---------------------------------------------------------------------------
+// Formatting and DOM
+// ---------------------------------------------------------------------------
+
 export function fmtMoney(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+
 export function fmtTime(sec) {
-  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
-  return m + ':' + String(s).padStart(2, '0');
+  // A clock, not a stopwatch: 18:24, not 1104:02.
+  const h = Math.floor(sec / 3600) % 24;
+  const m = Math.floor(sec / 60) % 60;
+  return h + ':' + String(m).padStart(2, '0');
 }
 
-// Offscreen canvas used to paint procedural textures.
+// Offscreen canvas for painting procedural textures onto.
 export function makeCanvas(w, h) {
   const c = document.createElement('canvas');
-  c.width = w; c.height = h;
+  c.width = w;
+  c.height = h;
   return c;
 }
 
-// Heading helpers: headings are radians, 0 = facing -Z (north on the map).
-export function headingToVector(h) { return { x: Math.sin(h), z: Math.cos(h) }; }
-export function vectorToHeading(x, z) { return Math.atan2(x, z); }
+// The city edge, for clamps that live outside the city module.
+export function cityBounds() { return { min: -CITY.half - 5, max: CITY.beachEnd + 50 }; }

@@ -1,9 +1,9 @@
 // BRISA BAY — boot, game loop and the glue between systems.
 // Rio Marin is back in Brisa Bay: drive, steal, run missions, dodge the BCPD.
 import * as THREE from 'three';
-import { CITY, CAR_DEFS, WEAPONS, SHOPS, MISSION_META, STORY_INTRO } from './config.js';
-import { clamp, damp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
-import { buildCity, roadLines } from './city.js';
+import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS } from './config.js';
+import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
+import { buildCity, nearestRoadCoord } from './city.js';
 import { Car, TrafficManager, PoliceManager } from './vehicles.js';
 import { Player } from './player.js';
 import { PedManager } from './pedestrians.js';
@@ -13,8 +13,6 @@ import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
 import { shotParam, stageShot } from './shots.js';
-
-const SAVE_VERSION = 1;
 
 class Game {
   constructor() {
@@ -31,7 +29,6 @@ class Game {
     this.audio = new AudioEngine();
     this.hud = new HUD(this.world);
     this.save = loadSave() || defaultSave();
-    this.save._v = SAVE_VERSION;
 
     this.player = new Player(this.scene, -140, 140);
     this.player.health = 100;
@@ -53,9 +50,9 @@ class Game {
     this.nearShop = null;
     this.shopOpen = false;
     this.dragging = false;
+    this.dragDist = 0;
     this.lastX = 0;
     this.lastY = 0;
-    this.ownedCars = new Map(); // car -> true (player's parked rides)
     this.shotMode = shotParam();
 
     this.traffic.spawn(14, { x: -140, z: 140 }, 150);
@@ -85,7 +82,7 @@ class Game {
     return (
       '<p class="story">' + STORY_INTRO.join('<br>') + '</p>' +
       '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot<br>' +
-      'R radio &nbsp;·&nbsp; M next mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; Mouse drag: camera</p>' +
+      'H horn &nbsp;·&nbsp; Q radio on/off &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M next mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; Mouse drag: camera</p>' +
       (next ? '<p class="next">Next mission: <b>' + next.name + '</b> — ' + next.brief + '</p>' : '<p class="next">Story complete. Free roam, Rio.</p>') +
       '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of 8. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>'
     );
@@ -119,6 +116,11 @@ class Game {
         this.audio.setStation(this.audio.station + 1);
         this.notify('Radio: ' + this.audio.stationName());
       }
+      if (e.code === 'KeyQ' && this.state === 'playing') {
+        const on = this.audio.toggleRadio();
+        this.notify(on ? 'Radio on: ' + this.audio.stationName() : 'Radio off');
+      }
+      if (e.code === 'KeyH' && this.state === 'playing' && this.player.inCar) this.audio.horn();
       if (e.code === 'KeyE') this.onInteract();
       if (e.code === 'KeyF' && this.state === 'playing' && !this.player.inCar) this.punch();
     });
@@ -128,6 +130,8 @@ class Game {
       this.dragging = true; this.dragDist = 0; this.lastX = e.clientX; this.lastY = e.clientY;
       this.audio.ensure(); this.audio.resume();
     });
+    // Right-drag orbits the camera too — don't let the browser menu pop up.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('pointermove', (e) => {
       if (!this.dragging) return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
@@ -205,7 +209,6 @@ class Game {
   enterCar(car) {
     this.player.inCar = car;
     car.driver = 'player';
-    car.mesh.visible = true;
     this.player.mesh.visible = false;
     this.audio.blip(660, 0.1, 0.12);
   }
@@ -256,19 +259,12 @@ class Game {
     }
     car.drive(dt, blocked ? -0.4 : (car.speed < targetSpeed ? 0.7 : 0.15), 0, this.world.colliders);
     const onLine = ai.axis === 'x'
-      ? Math.abs(car.pos.z - this.nearestRoad(car.pos.z)) < 1.4
-      : Math.abs(car.pos.x - this.nearestRoad(car.pos.x)) < 1.4;
+      ? Math.abs(car.pos.z - nearestRoadCoord(car.pos.z)) < 1.4
+      : Math.abs(car.pos.x - nearestRoadCoord(car.pos.x)) < 1.4;
     if (onLine && Math.random() < dt * 0.5) {
       ai.axis = ai.axis === 'x' ? 'z' : 'x';
       car.heading += Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
     }
-  }
-
-  nearestRoad(v) {
-    const lines = roadLines();
-    let best = lines[0], bd = Math.abs(v - lines[0]);
-    for (const l of lines) { const d = Math.abs(v - l); if (d < bd) { bd = d; best = l; } }
-    return best;
   }
 
   // --- combat (player side) ---------------------------------------------------
@@ -297,7 +293,7 @@ class Game {
     if (hit) {
       this.addWanted(1);
       if (hit.target.role === 'guard' && hit.killed) this.missions.onGuardKilled();
-      if (hit.target.kind === 'car' && hit.target.kind === 'rival') { /* rival handled below */ }
+      if (hit.target.kind === 'rival' && hit.killed) this.missions.onRivalDead();
     }
   }
 
@@ -348,8 +344,11 @@ class Game {
     } else if (id === 'respray') {
       if (!this.player.inCar) { this.notify('Bring a car to respray.'); return; }
       if (!spend(150)) return;
-      this.player.inCar.mesh.children[0].material = this.player.inCar.mesh.children[0].material.clone();
-      this.player.inCar.mesh.children[0].material.color.setHex(pick(mulberry32(Date.now() % 100000), [0xc94f43, 0x4a6fa5, 0xf2c230, 0x5a7d5a, 0xd21f2b]));
+      // Repaint the body mesh (kept in userData so we never depend on a
+      // child index) with a random colour from the shop palette.
+      const body = this.player.inCar.mesh.userData.body;
+      body.material = body.material.clone();
+      body.material.color.setHex(pick(mulberry32(Date.now() % 100000), RESPRAY_COLORS));
       this.setWanted(Math.max(0, this.wanted - 1));
       this.notify('Fresh paint. The heat drops a star.');
     } else if (id === 'repair') {
@@ -391,11 +390,11 @@ class Game {
     this.audio.fail();
   }
   respawn() {
-    const h = this.world.places.hospital;
-    this.player.pos.set(h.x, 0, h.z + 10);
-    this.player.heading = 0;
-    this.player.health = 100;
+    // Step out of the wreck first: exitCar places Rio beside the car, and
+    // the old order let that overwrite the hospital position.
     if (this.player.inCar) this.exitCar();
+    const h = this.world.places.hospital;
+    this.player.reset(h.x, h.z + 10);
     this.setWanted(0);
     this.state = 'playing';
     this.hud.hideMenu();
@@ -423,8 +422,11 @@ class Game {
       p.heading = car.heading;
       this.audio.setEngine(clamp(Math.abs(car.speed) / car.def.topSpeed, 0, 1), true);
       if (car.smoking) this.particles.smoke({ x: car.pos.x, y: 1.2, z: car.pos.z }, 1);
-      if (car.health <= 0 && !car.dead) {
-        car.dead = true;
+      // A wrecked ride blows up once. damage() already marks the car dead
+      // the moment health hits zero, so the old `!car.dead` guard here
+      // could never fire — the explosion (and the mission fail) never ran.
+      if (car.health <= 0 && !car.exploded) {
+        car.exploded = true;
         this.combat.explode({ x: car.pos.x, y: 1, z: car.pos.z }, 9, this.allCars().concat(this.peds.peds), this.audio);
         this.exitCar();
         this.notify('Your ride just blew up.');
@@ -455,7 +457,6 @@ class Game {
             this.audio.crash();
             this.particles.burst({ x: car.pos.x, y: 1, z: car.pos.z }, 10, new THREE.Color(0xffd34d), 4, 0.5);
             if (other.kind === 'rival' && died) this.missions.onRivalDead();
-            if (other.kind === 'police') this.addWanted(0);
             car.speed *= 0.5;
           }
         }
@@ -543,6 +544,7 @@ class Game {
       clockSec: this.clockSec % 86400,
       player: { x: p.pos.x, z: p.pos.z, heading: p.heading },
       cars: this.allCars(),
+      heliPos: this.police.heli ? { x: this.police.heli.position.x, z: this.police.heli.position.z } : null,
       markerPos: this.missions.markerPos || null,
     });
     if (this.elapsed % 30 < dt) this.writeSave();

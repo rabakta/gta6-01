@@ -3,7 +3,7 @@
 // beacon on the current objective, and pays out when the last step clears.
 import * as THREE from 'three';
 import { MISSION_META } from './config.js';
-import { dist2 } from './utils.js';
+import { dist2, mulberry32, randomPointInCircle } from './utils.js';
 
 const MISSIONS = [
   {
@@ -75,6 +75,7 @@ export class MissionManager {
     this.guards = [];
     this.targetCar = null;
     this.failReason = '';
+    this.doneName = '';
     this.scene = game.scene;
   }
 
@@ -92,7 +93,7 @@ export class MissionManager {
       if (step.type === 'eliminate') t += '  (' + this.kills + '/' + step.count + ')';
       return 'MISSION ' + (this.active + 1) + ' - ' + this.meta.name + ': ' + t;
     }
-    if (this.state === 'done') return 'Mission complete - ' + this.meta.name;
+    if (this.state === 'done') return 'Mission complete - ' + this.doneName;
     if (this.state === 'failed') return 'Mission failed - ' + this.failReason;
     const next = this.game.save.missionIndex;
     if (next >= MISSIONS.length) return 'Story complete - Brisa Bay is yours. Free roam, Rio.';
@@ -125,8 +126,9 @@ export class MissionManager {
     }
     if (step.type === 'ram' && !this.rival) {
       const g = this.game;
-      const x = g.player.pos.x + 40, z = g.player.pos.z - 20;
-      this.rival = g.spawnCar('vento', 0x8e2f32, x, z, 0);
+      // Vex starts somewhere on the streets nearby, not at a fixed offset.
+      const spot = randomPointInCircle(mulberry32((Date.now() % 100000) + 3), g.player.pos.x, g.player.pos.z, 45);
+      this.rival = g.spawnCar('vento', 0x8e2f32, spot.x, spot.z, 0);
       this.rival.kind = 'rival';
       this.rival.ai = { axis: 'x', dir: 1, targetSpeed: 16, wait: 0 };
       g.notify('Vex is running - catch his Vento and ram it!');
@@ -141,6 +143,8 @@ export class MissionManager {
     } else if (step.x !== undefined) {
       this.placeMarker(step.x, step.z);
     }
+    // Toast every new step so the player always knows what changed.
+    if (this.stepIndex > 0) this.game.notify(step.text);
   }
 
   placeMarker(x, z) {
@@ -187,6 +191,10 @@ export class MissionManager {
   complete() {
     this.clearMarker();
     this.state = 'done';
+    // Capture the name first: active is cleared below, and the 'done'
+    // objective line reads it every frame — reading this.meta after
+    // clearing active would be null.name and crash the game loop.
+    this.doneName = this.meta.name;
     const reward = this.meta.reward;
     this.game.save.cash += reward;
     this.game.save.missionIndex = Math.max(this.game.save.missionIndex, this.active + 1);
@@ -246,10 +254,18 @@ export class MissionManager {
       this.beacon.rotation.y += dt * 0.8;
       this.beacon.material.opacity = 0.22 + Math.sin(performance.now() / 300) * 0.08;
     }
+    // The ground ring breathes so the objective reads from far away.
+    if (this.marker) {
+      const s = 1 + Math.sin(performance.now() / 300) * 0.08;
+      this.marker.scale.set(s, s, 1);
+    }
     if (this.packageMesh) this.packageMesh.rotation.y += dt * 2;
     if (step.type === 'timed') {
       this.timer -= dt;
       if (this.timer <= 0) { this.fail('Out of time'); return; }
+      // The first build only counted the timer down — reaching the bridge
+      // never completed the step, so the mission could never be won.
+      if (dist2(p.x, p.z, step.x, step.z) < step.radius) { this.nextStep(); return; }
     }
     if (step.type === 'goto' || step.type === 'driveTo') {
       if (dist2(p.x, p.z, step.x, step.z) < step.radius) this.nextStep();

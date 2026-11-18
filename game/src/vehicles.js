@@ -1,14 +1,19 @@
 // BRISA BAY — cars: the player's ride, city traffic and the BCPD.
 // Arcade handling (no physics engine): each car is a heading + speed on the
 // road grid, with circle-vs-box building collision and circle-vs-circle
-// car collision. Traffic follows the road lines; police pursue the player.
+// car collision. Traffic follows the road lines; police pursue the player
+// and the helicopter orbits from three stars up.
 import * as THREE from 'three';
-import { CAR_DEFS, CITY } from './config.js';
-import { clamp, angleDiff, angleLerp, dist2, mulberry32, pick } from './utils.js';
+import { CAR_DEFS } from './config.js';
+import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
 import { nearestRoadCoord, resolveCircleCollisions } from './city.js';
 
 const CAR_COLORS = { police: 0x1d2733 };
 
+// Box-built car: body, cabin, wheels, headlights and taillights; trucks and
+// vans get a long body and a cargo box, police get a flashing light bar,
+// taxis a roof sign. Forward is local +Z: the mesh is rotated by the
+// heading and drive() moves it along (sin h, cos h), so the nose (+Z) leads.
 export function makeCarMesh(defKey, colorHex) {
   const def = CAR_DEFS[defKey];
   const g = new THREE.Group();
@@ -17,11 +22,15 @@ export function makeCarMesh(defKey, colorHex) {
   const glassMat = new THREE.MeshLambertMaterial({ color: 0x9fc4d8 });
   const isTruck = defKey === 'caminar';
   const isVan = defKey === 'carguero';
+  const longBody = isTruck || isVan;
+  const bodyLen = longBody ? 5.4 : 4.4;
 
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, isTruck || isVan ? 5.4 : 4.4), bodyMat);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, bodyLen), bodyMat);
   body.position.y = 0.55;
   body.castShadow = true;
   g.add(body);
+  // The respray shop repaints this mesh by reference, not by child index.
+  g.userData.body = body;
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, isTruck ? 1.4 : 2.1), isTruck ? bodyMat : glassMat);
   cabin.position.set(0, 1.1, isTruck ? 1.6 : -0.15);
   cabin.castShadow = true;
@@ -35,7 +44,7 @@ export function makeCarMesh(defKey, colorHex) {
   // Wheels.
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 10);
   const wheelMat = new THREE.MeshLambertMaterial({ color: 0x0c0d10 });
-  const wheelZ = isTruck || isVan ? [-1.7, 1.7] : [-1.45, 1.45];
+  const wheelZ = longBody ? [-1.7, 1.7] : [-1.45, 1.45];
   for (const z of wheelZ) {
     for (const x of [-0.95, 0.95]) {
       const w = new THREE.Mesh(wheelGeo, wheelMat);
@@ -44,32 +53,40 @@ export function makeCarMesh(defKey, colorHex) {
       g.add(w);
     }
   }
-  // Headlights + taillights.
+  // Headlights on the nose (+Z, the direction of travel) and taillights
+  // on the rear (-Z). The first build had these swapped — white lights
+  // shining out of the boot.
   const headMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
   const tailMat = new THREE.MeshBasicMaterial({ color: 0xd21f2b });
+  const lightZ = longBody ? 2.72 : 2.22;
   for (const x of [-0.6, 0.6]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat);
-    h.position.set(x, 0.6, isTruck || isVan ? -2.72 : -2.22);
+    h.position.set(x, 0.6, lightZ);
     g.add(h);
     const t = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tailMat);
-    t.position.set(x, 0.6, isTruck || isVan ? 2.72 : 2.22);
+    t.position.set(x, 0.6, -lightZ);
     g.add(t);
   }
   if (defKey === 'police') {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 0.4), new THREE.MeshBasicMaterial({ color: 0x2b6fd6 }));
-    bar.position.set(0, 1.45, -0.1);
-    g.add(bar);
-    const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.42), new THREE.MeshBasicMaterial({ color: 0xd21f2b }));
-    bar2.position.set(0, 1.45, -0.1);
-    bar2.position.x = 0.55;
-    g.add(bar2);
+    // Light bar: blue left, red right. The manager flashes them by
+    // swapping the two materials' colours each half-second; the meshes are
+    // kept in userData so the flash can find them.
+    const blueMat = new THREE.MeshBasicMaterial({ color: 0x2b6fd6 });
+    const redMat = new THREE.MeshBasicMaterial({ color: 0xd21f2b });
+    const blue = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.14, 0.4), blueMat);
+    blue.position.set(-0.28, 1.45, -0.1);
+    const red = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.42), redMat);
+    red.position.set(0.28, 1.45, -0.1);
+    g.add(blue, red);
+    g.userData.lightBars = [blue, red];
+    g.userData.lightMats = [blueMat, redMat];
   }
   if (defKey === 'taxi') {
     const sign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 0.3), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
     sign.position.set(0, 1.5, -0.15);
     g.add(sign);
   }
-  g.userData.length = isTruck || isVan ? 5.4 : 4.4;
+  g.userData.length = bodyLen;
   return g;
 }
 
@@ -110,9 +127,8 @@ export class Car {
     // so turning right from south swings the nose toward the west.
     const turn = this.steer * (1.9 - speedNorm * 0.9) * Math.sign(this.speed || 1) * dt;
     this.heading -= turn;
-    const nx = this.pos.x + Math.sin(this.heading) * this.speed * dt;
-    const nz = this.pos.z + Math.cos(this.heading) * this.speed * dt;
-    this.pos.x = nx; this.pos.z = nz;
+    this.pos.x += Math.sin(this.heading) * this.speed * dt;
+    this.pos.z += Math.cos(this.heading) * this.speed * dt;
     // Buildings: slide along them, lose a little speed on impact.
     const before = { x: this.pos.x, z: this.pos.z };
     if (resolveCircleCollisions(colliders, this.pos, 1.9)) {
@@ -159,8 +175,10 @@ export class TrafficManager {
       const axis = this.rng() < 0.5 ? 'x' : 'z';
       const line = pick(this.rng, lines);
       const along = (this.rng() * 2 - 1) * radius + (axis === 'x' ? center.z : center.x);
-      const x = axis === 'x' ? line : along;
-      const z = axis === 'x' ? along : line;
+      // A touch of lateral jitter so traffic doesn't look glued to the line.
+      const lateral = (this.rng() - 0.5) * 2.4;
+      const x = axis === 'x' ? line + lateral : along;
+      const z = axis === 'x' ? along : line + lateral;
       const dir = this.rng() < 0.5 ? 1 : -1;
       const heading = axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? 0 : Math.PI);
       const car = new Car(key, color, x, z, heading);
@@ -206,7 +224,7 @@ export class TrafficManager {
         car.heading += turn;
         if (this.rng() < 0.35) ai.wait = 1 + this.rng() * 2; // pause at the light
       }
-      // Keep traffic inside the city; respawn far cars near the player.
+      // Keep traffic inside the city; clamp far cars back in.
       if (Math.abs(car.pos.x) > 240 || Math.abs(car.pos.z) > 240) {
         car.pos.x = clamp(car.pos.x, -200, 200);
         car.pos.z = clamp(car.pos.z, -200, 200);
@@ -225,25 +243,31 @@ export class PoliceManager {
     this.heli = null;
     this.heliLight = null;
     this.spawnTimer = 0;
+    this.flashPhase = 0;
   }
 
   wantedToCount(wanted) {
     return wanted <= 0 ? 0 : wanted <= 1 ? 1 : wanted <= 2 ? 2 : wanted <= 3 ? 3 : 4;
   }
 
+  // Spawn one unit immediately, ignoring the 2.5s pacing — used by the
+  // screenshot staging, which needs a fixed number of cars in frame.
+  spawnOne(playerPos) {
+    const spot = randomPointInCircle(this.rng, playerPos.x, playerPos.z, 90);
+    const car = new Car('police', CAR_COLORS.police, clamp(spot.x, -200, 200), clamp(spot.z, -200, 200), 0);
+    car.kind = 'police';
+    this.scene.add(car.mesh);
+    this.cars.push(car);
+    return car;
+  }
+
   update(dt, wanted, playerPos, playerInCar, allCars) {
     const want = this.wantedToCount(wanted);
-    // Spawn / despawn to match the wanted level.
+    // Spawn / despawn to match the wanted level (one new unit per 2.5s).
     this.spawnTimer -= dt;
     if (this.cars.length < want && this.spawnTimer <= 0) {
       this.spawnTimer = 2.5;
-      const angle = this.rng() * Math.PI * 2;
-      const x = playerPos.x + Math.sin(angle) * 90;
-      const z = playerPos.z + Math.cos(angle) * 90;
-      const car = new Car('police', CAR_COLORS.police, clamp(x, -200, 200), clamp(z, -200, 200), 0);
-      car.kind = 'police';
-      this.scene.add(car.mesh);
-      this.cars.push(car);
+      this.spawnOne(playerPos);
     }
     while (this.cars.length > want) {
       const c = this.cars.pop();
@@ -265,6 +289,15 @@ export class PoliceManager {
         car.speed *= 0.4;
       }
     }
+    // Flash the light bars: blue and red alternate every half second.
+    this.flashPhase += dt;
+    const blueOn = Math.floor(this.flashPhase * 2) % 2 === 0;
+    for (const car of this.cars) {
+      const mats = car.mesh.userData.lightMats;
+      if (!mats) continue;
+      mats[0].color.setHex(blueOn ? 0x2b6fd6 : 0x0a2a55);
+      mats[1].color.setHex(blueOn ? 0x5a0f16 : 0xd21f2b);
+    }
     // Helicopter from 3 stars up.
     if (wanted >= 3 && !this.heli) this.spawnHeli();
     if (wanted < 3 && this.heli) {
@@ -280,7 +313,8 @@ export class PoliceManager {
         playerPos.z + Math.cos(t * 0.4) * 14,
       );
       this.heli.rotation.y = Math.atan2(playerPos.x - this.heli.position.x, playerPos.z - this.heli.position.z);
-      this.heli.children[1].rotation.y += dt * 22; // rotor spin
+      // Children: 0 body, 1 tail, 2 rotor group, 3 glass — spin the rotor.
+      this.heli.children[2].rotation.y += dt * 22;
       if (this.heliLight) {
         this.heliLight.position.copy(this.heli.position);
         this.heliLight.target.position.set(playerPos.x, 0, playerPos.z);
