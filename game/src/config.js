@@ -26,7 +26,9 @@ export const PALETTE = {
   skyTop: 0x2a4f7e,
   skyHorizon: 0xff9a4d,
   sun: 0xffd9a0,
-  sunIntensity: 2.6,
+  // v5: the sun is a touch hotter and the hemisphere a touch dimmer, so
+  // the sunset shadows bite and the lit windows read.
+  sunIntensity: 2.8,
   hemiSky: 0x9db8d6,
   hemiGround: 0x5a4a38,
   fog: 0xe8965f,

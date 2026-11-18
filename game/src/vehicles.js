@@ -12,9 +12,23 @@ import * as THREE from 'three';
 import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT } from './config.js';
 import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
 import { nearestRoadCoord, resolveCircleCollisions } from './city.js';
-import { barrierTexture } from './textures.js';
+import { barrierTexture, glowTexture } from './textures.js';
 
 const CAR_COLORS = { police: 0x1d2733 };
+
+// v5: headlight/taillight halos — shared glow sprite materials, created
+// lazily so importing this module in Node (logic tests) never touches the
+// DOM before the test stubs exist.
+let headGlowMat = null;
+let tailGlowMat = null;
+function lightGlowMats() {
+  if (!headGlowMat) {
+    const tex = glowTexture();
+    headGlowMat = new THREE.SpriteMaterial({ map: tex, color: 0xffe9a8, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    tailGlowMat = new THREE.SpriteMaterial({ map: tex, color: 0xff3a3a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+  }
+  return { headGlowMat, tailGlowMat };
+}
 
 // Box-built car: body, cabin, wheels, headlights and taillights; trucks and
 // vans get a long body and a cargo box, police get a flashing light bar,
@@ -88,6 +102,16 @@ export function makeCarMesh(defKey, colorHex) {
     tail.position.set(0, 0.6, -1.12);
     g.add(tail);
     g.userData.tailMats = [tm];
+    // v5: glow halos on the bike's lights, so it reads at dusk.
+    const bikeGlow = lightGlowMats();
+    const bikeHeadHalo = new THREE.Sprite(bikeGlow.headGlowMat);
+    bikeHeadHalo.position.set(0, 0.6, 1.25);
+    bikeHeadHalo.scale.setScalar(1.4);
+    g.add(bikeHeadHalo);
+    const bikeTailHalo = new THREE.Sprite(bikeGlow.tailGlowMat);
+    bikeTailHalo.position.set(0, 0.6, -1.25);
+    bikeTailHalo.scale.setScalar(1.2);
+    g.add(bikeTailHalo);
     g.userData.length = bodyLen;
     return g;
   }
@@ -164,6 +188,19 @@ export function makeCarMesh(defKey, colorHex) {
     tailMats.push(tm);
   }
   g.userData.tailMats = tailMats;
+  // v5: glow halos on the headlights and one centred red halo on the
+  // tail, so the lights read as light at dusk instead of flat boxes.
+  const carGlow = lightGlowMats();
+  for (const x of [-0.6, 0.6]) {
+    const hs = new THREE.Sprite(carGlow.headGlowMat);
+    hs.position.set(x, 0.6, lightZ + 0.15);
+    hs.scale.setScalar(1.8);
+    g.add(hs);
+  }
+  const ts = new THREE.Sprite(carGlow.tailGlowMat);
+  ts.position.set(0, 0.6, -lightZ - 0.15);
+  ts.scale.setScalar(1.6);
+  g.add(ts);
   if (defKey === 'police') {
     // Light bar: blue left, red right. The manager flashes them by
     // swapping the two materials' colours each half-second; the meshes are

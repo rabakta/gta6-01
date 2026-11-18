@@ -1,4 +1,4 @@
-// BRISA BAY v3 — the city itself: roads, buildings, beach, sea, palms,
+// BRISA BAY v5 — the city itself: roads, buildings, beach, sea, palms,
 // lamps, billboards and the bridge. Everything is built procedurally from
 // one seed, so the map is identical on every run and the screenshots can be
 // re-staged exactly. v2 adds a visible sun disc with a glow, a glittering
@@ -6,13 +6,51 @@
 // signs on the shops, glowing street lamps and two more billboards. v3:
 // the collectible packages and taxi fares place themselves on the road
 // lines and the open beach this city builds, so no map change was needed.
+// v5: the graphics round — facades are painted per storey (no more
+// stretched windows), lit windows glow through an emissive map, towers get
+// parapets and varied roof colours, and the ground gets crosswalks, plaza
+// tiles, kerbs and a wet-sand band, so the streets stop reading as flat
+// colour. The building loop consumes its seeded rng in exactly the v4
+// order — no new rng() calls inside it — so every cell keeps its v4
+// layout and no mission step can get buried by a reshuffle.
 import * as THREE from 'three';
 import { CITY, PALETTE, SHOPS, BUS_STOPS, VENDORS } from './config.js';
 import { mulberry32, pick } from './utils.js';
-import { facadeTexture, roadTexture, pavementTexture, sandTexture, signTexture, billboardTexture, roofTexture, glowTexture, neonSignTexture } from './textures.js';
+import { facadeTexture, roadTexture, pavementTexture, sandTexture, signTexture, billboardTexture, roofTexture, glowTexture, neonSignTexture, crosswalkTexture, plazaTexture, kerbTexture, wetSandTexture } from './textures.js';
 
 // Warm pastel stucco for the city blocks.
 const PASTEL = ['#e8b4a0', '#f2d5a0', '#a8c8b8', '#d98a7a', '#9fb8cc', '#e5c8d8', '#c8b8a0', '#f0e0c0'];
+// Roof colours, varied per tower so the skyline is not one brown slab.
+const ROOF_COLS = ['#6b5a4a', '#8a6b52', '#5a6b7a', '#7a4a3a'];
+// The four central intersections get plaza tiles instead of a crosswalk.
+export const PLAZA_SPOTS = [[0, 0], [0, 60], [60, 0], [60, 60]];
+
+// Match a facade's painted storeys and window columns to a building's
+// real size: short towers get 3 storeys, mid ones 5, tall ones 8; narrow
+// towers 4 columns, wide ones 6. Pure function, so the logic tests can
+// pin the buckets without building the city.
+export function facadeBucket(h, w) {
+  return {
+    floors: h < 14 ? 3 : h < 28 ? 5 : 8,
+    cols: w < 20 ? 4 : 6,
+  };
+}
+
+// Facade materials, cached by (pastel, seed, floors, cols): towers that
+// share a bucket share one material, so the texture count stays bounded
+// while every tower shows the right number of storeys. The material's
+// emissive map makes its lit windows glow at sunset.
+const facadeCache = new Map();
+function facadeMaterial(base, seed, floors, cols) {
+  const key = base + '|' + seed + '|' + floors + '|' + cols;
+  let m = facadeCache.get(key);
+  if (!m) {
+    const t = facadeTexture(base, seed, floors, cols);
+    m = new THREE.MeshLambertMaterial({ map: t.map, emissive: 0xffb45e, emissiveIntensity: 0.85, emissiveMap: t.emissiveMap });
+    facadeCache.set(key, m);
+  }
+  return m;
+}
 
 // Road centre lines, one per grid line.
 export function roadLines() {
@@ -35,6 +73,7 @@ export function nearestRoadCoord(v) {
 export function buildCity(scene) {
   const rng = mulberry32(20261118);
   const colliders = [];
+  const v5counts = { towers: 0, parapets: 0, crosswalks: 0, plazas: 0, kerbs: 0, clouds: 0, halos: 0, roofColorsUsed: 0 };
   const world = {
     colliders,
     roads: roadLines(),
@@ -55,6 +94,8 @@ export function buildCity(scene) {
     // v4: bus stops and vendor stalls, built below from config.
     busStops: [],
     vendorSpots: [],
+    // v5: how much of the new graphics actually got built (logic tests).
+    v5counts,
   };
 
   // Sky: warm sunset gradient dome + fog so the far sea melts into the sun.
@@ -72,7 +113,8 @@ export function buildCity(scene) {
   scene.add(new THREE.Mesh(skyGeo, skyMat));
   scene.fog = new THREE.Fog(PALETTE.fog, 220, 700);
 
-  // Sun + ambient light.
+  // Sun + ambient light. v5 deepens the contrast: a hotter sun, a dimmer
+  // hemisphere, so the shadows bite and the lit windows read.
   const sun = new THREE.DirectionalLight(PALETTE.sun, PALETTE.sunIntensity);
   sun.position.set(-160, 190, -120);
   sun.castShadow = true;
@@ -83,7 +125,7 @@ export function buildCity(scene) {
   sun.shadow.camera.bottom = -260;
   sun.shadow.camera.far = 700;
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.85));
+  scene.add(new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.7));
 
   // v2: the sun itself, low in the west, with a halo that bleeds into the
   // haze. The disc sits on the sky dome so it reads in every wide shot.
@@ -104,6 +146,22 @@ export function buildCity(scene) {
   sunGlow.scale.setScalar(260);
   scene.add(sunGlow);
 
+  // v5: high soft clouds, so the sky has depth instead of a flat gradient.
+  // A fresh seeded stream — the shared rng is untouched, the city layout
+  // cannot shift under them.
+  const cloudRng = mulberry32(20261119);
+  for (let i = 0; i < 8; i++) {
+    const cloud = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunGlowTex, color: 0xffffff, transparent: true,
+      opacity: 0.18 + cloudRng() * 0.12, depthWrite: false, fog: false,
+    }));
+    cloud.position.set(-500 + cloudRng() * 1100, 320 + cloudRng() * 160, -500 + cloudRng() * 1000);
+    cloud.scale.set(120 + cloudRng() * 100, 40 + cloudRng() * 30, 1);
+    cloud.userData.v5kind = 'cloud';
+    scene.add(cloud);
+    v5counts.clouds++;
+  }
+
   // Ground: one big pavement slab under the city, sand beyond the beach line.
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.half * 2 + 40, CITY.half * 2 + 40),
@@ -121,6 +179,17 @@ export function buildCity(scene) {
   sand.position.set((CITY.half + CITY.beachEnd + 120) / 2 - 20, 0.05, 0);
   sand.receiveShadow = true;
   scene.add(sand);
+
+  // v5: a wet-sand band along the waterline, darker than the dry beach.
+  const wetSand = new THREE.Mesh(
+    new THREE.PlaneGeometry(CITY.beachEnd - CITY.half, CITY.half * 2 + 40),
+    new THREE.MeshLambertMaterial({ map: wetSandTexture() }),
+  );
+  wetSand.rotation.x = -Math.PI / 2;
+  wetSand.position.set((CITY.half + CITY.beachEnd) / 2, 0.06, 0);
+  wetSand.receiveShadow = true;
+  wetSand.userData.v5kind = 'wetSand';
+  scene.add(wetSand);
 
   // The sea: a big plane that shimmers with a slow sine in the vertex
   // shader. v2 adds a white foam edge where the water meets the sand and a
@@ -152,11 +221,67 @@ export function buildCity(scene) {
     scene.add(hRoad);
   }
 
+  // v5: kerb strips along every road edge, so the asphalt ends in a kerb
+  // instead of melting into the pavement. The two axes sit at different
+  // heights (0.09 / 0.095) so they never z-fight where they cross.
+  const kerbMat = new THREE.MeshLambertMaterial({ map: kerbTexture() });
+  const kerbGeoZ = new THREE.PlaneGeometry(1.2, roadLen);
+  const kerbGeoX = new THREE.PlaneGeometry(roadLen, 1.2);
+  for (const l of roadLines()) {
+    for (const off of [-7.6, 7.6]) {
+      const kz = new THREE.Mesh(kerbGeoZ, kerbMat);
+      kz.rotation.x = -Math.PI / 2;
+      kz.position.set(l + off, 0.09, 0);
+      kz.receiveShadow = true;
+      kz.userData.v5kind = 'kerb';
+      scene.add(kz);
+      v5counts.kerbs++;
+      const kx = new THREE.Mesh(kerbGeoX, kerbMat);
+      kx.rotation.x = -Math.PI / 2;
+      kx.position.set(0, 0.095, l + off);
+      kx.receiveShadow = true;
+      kx.userData.v5kind = 'kerb';
+      scene.add(kx);
+      v5counts.kerbs++;
+    }
+  }
+
+  // v5: a zebra crossing on every intersection, plaza tiles on the four
+  // central ones instead. One shared geometry and material each.
+  const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
+  const crossMat = new THREE.MeshLambertMaterial({ map: crosswalkTexture() });
+  const plazaMat = new THREE.MeshLambertMaterial({ map: plazaTexture() });
+  const plazaGeo = new THREE.PlaneGeometry(16, 16);
+  const lines = roadLines();
+  lines.forEach((lx, ix) => {
+    lines.forEach((lz, iz) => {
+      if (PLAZA_SPOTS.some(([px, pz]) => px === lx && pz === lz)) {
+        const plaza = new THREE.Mesh(plazaGeo, plazaMat);
+        plaza.rotation.x = -Math.PI / 2;
+        plaza.position.set(lx, 0.1, lz);
+        plaza.receiveShadow = true;
+        plaza.userData.v5kind = 'plaza';
+        scene.add(plaza);
+        v5counts.plazas++;
+        return;
+      }
+      const cross = new THREE.Mesh(crossGeo, crossMat);
+      cross.rotation.x = -Math.PI / 2;
+      // Alternate the stripe direction so the grid does not repeat one way.
+      cross.rotation.z = (ix + iz) % 2 === 0 ? 0 : Math.PI / 2;
+      cross.position.set(lx, 0.1, lz);
+      cross.receiveShadow = true;
+      cross.userData.v5kind = 'crosswalk';
+      scene.add(cross);
+      v5counts.crosswalks++;
+    });
+  });
+
   // Buildings: one block per grid cell, 1-3 towers each, pastel facades.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-  const facadeMats = PASTEL.map((c, i) => new THREE.MeshLambertMaterial({ map: facadeTexture(c, 100 + i) }));
-  const roofMat = new THREE.MeshLambertMaterial({ map: roofTexture('#6b5a4a') });
-  const lines = roadLines();
+  const roofMats = ROOF_COLS.map((c) => new THREE.MeshLambertMaterial({ map: roofTexture(c) }));
+  const parapetMat = new THREE.MeshLambertMaterial({ color: 0x4a3f35 });
+  const roofUsed = new Set();
   for (let ix = 0; ix < CITY.blocks - 1; ix++) {
     for (let iz = 0; iz < CITY.blocks - 1; iz++) {
       const cx = (lines[ix] + lines[ix + 1]) / 2;
@@ -177,27 +302,46 @@ export function buildCity(scene) {
         const oz = (rng() - 0.5) * (CITY.blockSize - d - 4);
         const x = cx + ox;
         const z = cz + oz;
-        const tower = new THREE.Mesh(boxGeo, facadeMats[Math.floor(rng() * facadeMats.length)]);
+        const pi = Math.floor(rng() * PASTEL.length);
+        // v5: the facade's storeys and columns match this tower's size,
+        // and the roof colour is picked from the cell — deterministic, so
+        // the shared rng stream is untouched and the layout cannot shift.
+        const { floors, cols } = facadeBucket(h, w);
+        const tower = new THREE.Mesh(boxGeo, facadeMaterial(PASTEL[pi], 100 + pi, floors, cols));
         tower.scale.set(w, h, d);
         tower.position.set(x, h / 2, z);
         tower.castShadow = true;
         tower.receiveShadow = true;
+        tower.userData.v5kind = 'facade';
         if (!skipCell) scene.add(tower);
-        const roof = new THREE.Mesh(boxGeo, roofMat);
+        v5counts.towers++;
+        const roofIdx = (ix * 7 + iz * 3 + t) % roofMats.length;
+        roofUsed.add(roofIdx);
+        const roof = new THREE.Mesh(boxGeo, roofMats[roofIdx]);
         roof.scale.set(w + 0.6, 0.5, d + 0.6);
-        roof.position.set(x, h + 0.25, z);
+        roof.position.set(x, h + 1.15, z);
+        roof.userData.v5kind = 'roof';
         if (!skipCell) scene.add(roof);
+        // v5: a parapet rim around the roof edge, so the tower reads as a
+        // building with a roof instead of a flat-topped box.
+        const rim = new THREE.Mesh(boxGeo, parapetMat);
+        rim.scale.set(w + 0.8, 0.9, d + 0.8);
+        rim.position.set(x, h + 0.45, z);
+        rim.userData.v5kind = 'parapet';
+        if (!skipCell) scene.add(rim);
+        v5counts.parapets++;
         // Rooftop box (AC unit / water tank) for silhouette variety.
         if (rng() < 0.6) {
-          const unit = new THREE.Mesh(boxGeo, roofMat);
+          const unit = new THREE.Mesh(boxGeo, roofMats[roofIdx]);
           unit.scale.set(3 + rng() * 3, 1.5 + rng() * 2, 3 + rng() * 3);
-          unit.position.set(x + (rng() - 0.5) * w * 0.5, h + 1.2, z + (rng() - 0.5) * d * 0.5);
+          unit.position.set(x + (rng() - 0.5) * w * 0.5, h + 2.0, z + (rng() - 0.5) * d * 0.5);
           if (!skipCell) scene.add(unit);
         }
         if (!skipCell) colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
       }
     }
   }
+  v5counts.roofColorsUsed = roofUsed.size;
 
   // Landmark towers: the Solmar Casino and the Marina hotel, taller than the
   // rest. Each gets its own facade seed from its position, so the two
@@ -207,14 +351,24 @@ export function buildCity(scene) {
   // the centre is inside this collider and no player can ever stand there.
   function buildLandmarkTower(x, z, w, h, d, color) {
     const seed = Math.abs(Math.floor(x * 7 + z * 13)) + 5;
-    const m = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ map: facadeTexture(color, seed) }));
+    const { floors, cols } = facadeBucket(h, w);
+    const m = new THREE.Mesh(boxGeo, facadeMaterial(color, seed, floors, cols));
     m.scale.set(w, h, d);
     m.position.set(x, h / 2, z);
     m.castShadow = true;
+    m.userData.v5kind = 'facade';
     scene.add(m);
-    const cap = new THREE.Mesh(boxGeo, roofMat);
+    v5counts.towers++;
+    const rim = new THREE.Mesh(boxGeo, parapetMat);
+    rim.scale.set(w + 0.8, 0.9, d + 0.8);
+    rim.position.set(x, h + 0.45, z);
+    rim.userData.v5kind = 'parapet';
+    scene.add(rim);
+    v5counts.parapets++;
+    const cap = new THREE.Mesh(boxGeo, roofMats[seed % roofMats.length]);
     cap.scale.set(w + 0.8, 0.6, d + 0.8);
-    cap.position.set(x, h + 0.3, z);
+    cap.position.set(x, h + 1.15, z);
+    cap.userData.v5kind = 'roof';
     scene.add(cap);
     colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
     return m;
@@ -342,6 +496,17 @@ export function buildCity(scene) {
   board3Post.position.set(198, 3.5, 96);
   scene.add(board3Post);
   colliders.push({ minX: 192, maxX: 200, minZ: 92, maxZ: 100 });
+  // v5: a glow halo behind the marina neon, so the sign reads as a tube
+  // of light instead of a flat picture.
+  const board3Halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: sunGlowTex, color: 0x4fd8ff, transparent: true, opacity: 0.45,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  board3Halo.position.set(196.4, 7, 96);
+  board3Halo.scale.setScalar(12);
+  board3Halo.userData.v5kind = 'neonHalo';
+  scene.add(board3Halo);
+  v5counts.halos++;
 
   // Palm trees along the beach and a few avenues.
   const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5a38 });
@@ -421,7 +586,10 @@ export function buildCity(scene) {
 
   // Shops: a sign board + a lit box at each shop corner. v2 hangs a neon
   // tube sign under the board, so each shop glows in its own colour.
+  // v5: a real awning over the shopfront, a lit window, and a glow halo
+  // behind the neon — the shopfront gets depth instead of a flat box.
   const neonColors = { guns: '#ff4fd8', garage: '#4fd8ff', food: '#ffb84f' };
+  const awningColors = { guns: 0xc94f43, garage: 0x4fd8ff, food: 0xf2a007 };
   for (const shop of SHOPS) {
     const [x, z] = shop.pos;
     const boardMesh = new THREE.Mesh(
@@ -443,17 +611,57 @@ export function buildCity(scene) {
     box.position.set(x, 2.5, z);
     box.castShadow = true;
     scene.add(box);
+    // The shopfront faces the city centre: the awning, the lit window
+    // and the halo all sit on that side of the box.
+    const dirX = -x / Math.hypot(x, z);
+    const dirZ = -z / Math.hypot(x, z);
+    const awning = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 0.15, 3),
+      new THREE.MeshLambertMaterial({ color: awningColors[shop.kind] || 0xc94f43 }),
+    );
+    awning.rotation.order = 'YXZ';
+    awning.rotation.y = Math.atan2(-x, -z);
+    awning.rotation.x = -0.45;
+    awning.position.set(x + dirX * 4.6, 3.7, z + dirZ * 4.6);
+    awning.castShadow = true;
+    awning.userData.v5kind = 'awning';
+    scene.add(awning);
+    const shopGlow = new THREE.Mesh(
+      new THREE.PlaneGeometry(9, 2.4),
+      new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.85 }),
+    );
+    shopGlow.position.set(x + dirX * 4.05, 2.2, z + dirZ * 4.05);
+    shopGlow.rotation.y = Math.atan2(-x, -z);
+    shopGlow.userData.v5kind = 'shopGlow';
+    scene.add(shopGlow);
+    const neonHalo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunGlowTex, color: new THREE.Color(neonColors[shop.kind] || '#ff4fd8'),
+      transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    neonHalo.position.set(x - dirX * 0.4, 4.4, z - dirZ * 0.4);
+    neonHalo.scale.setScalar(14);
+    neonHalo.userData.v5kind = 'neonHalo';
+    scene.add(neonHalo);
+    v5counts.halos++;
     colliders.push({ minX: x - 6, maxX: x + 6, minZ: z - 4, maxZ: z + 4 });
     world.shops.push({ ...shop, x, z });
   }
 
   // Safehouse: a small beach house with a porch light and a garage door.
   const sh = world.places.safehouse;
-  const house = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ map: facadeTexture('#e8b4a0', 5) }));
+  const house = new THREE.Mesh(boxGeo, facadeMaterial('#e8b4a0', 5, 3, 4));
   house.scale.set(12, 7, 10);
   house.position.set(sh.x, 3.5, sh.z);
   house.castShadow = true;
+  house.userData.v5kind = 'facade';
   scene.add(house);
+  v5counts.towers++;
+  const houseRim = new THREE.Mesh(boxGeo, parapetMat);
+  houseRim.scale.set(12.8, 0.9, 10.8);
+  houseRim.position.set(sh.x, 7.45, sh.z);
+  houseRim.userData.v5kind = 'parapet';
+  scene.add(houseRim);
+  v5counts.parapets++;
   const porch = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), lampMat);
   porch.position.set(sh.x + 6.2, 3.4, sh.z);
   scene.add(porch);

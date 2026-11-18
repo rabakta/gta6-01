@@ -7,7 +7,9 @@
 // dust, brake lights, a fourth radio station and two new missions. v4:
 // the city gets busier — bikes and buses in traffic, bus stops with
 // boarding passengers, walking groups, joggers, vendors, a street
-// performer, birds, and parked cars Rio can steal.
+// performer, birds, and parked cars Rio can steal. v5: the graphics
+// round — emissive windows, ground detail and a headlight pool on the
+// road ahead of whatever Rio is driving; no gameplay system changes.
 import * as THREE from 'three';
 import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
@@ -25,6 +27,7 @@ import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
 import { shotParam, stageShot } from './shots.js';
+import { glowTexture } from './textures.js';
 
 class Game {
   constructor() {
@@ -65,6 +68,18 @@ class Game {
     // Rio can steal (see spawnParked).
     this.birds = new Birds(this.scene);
     this.parked = [];
+    // v5: the headlight pool — one soft pool of light on the road ahead
+    // of whatever Rio is driving, repositioned every frame. One mesh,
+    // shared by every car, so it costs nothing when Rio is on foot.
+    this.headlightPool = new THREE.Group();
+    const poolMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(5, 9),
+      new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0xffe9a8, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false }),
+    );
+    poolMesh.rotation.x = -Math.PI / 2;
+    this.headlightPool.add(poolMesh);
+    this.headlightPool.visible = false;
+    this.scene.add(this.headlightPool);
 
     this.keys = {};
     this.state = 'menu'; // menu | playing | paused | wasted | busted | ending
@@ -560,6 +575,18 @@ class Game {
       const mz = Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
       p.updateOnFoot(dt, { x: mx, z: mz }, !!(this.keys.ShiftLeft || this.keys.ShiftRight), this.world.colliders);
       this.audio.setEngine(0, false);
+    }
+
+    // v5: the headlight pool follows the driven car, hidden on foot.
+    // The group's -Z is the pool's long axis, so yaw + PI points it
+    // forward along the car's heading.
+    if (p.inCar) {
+      const car = p.inCar;
+      this.headlightPool.visible = true;
+      this.headlightPool.position.set(car.pos.x + Math.sin(car.heading) * 7, 0.12, car.pos.z + Math.cos(car.heading) * 7);
+      this.headlightPool.rotation.y = car.heading + Math.PI;
+    } else {
+      this.headlightPool.visible = false;
     }
 
     // Car-vs-car and car-vs-ped collisions for the player's car.

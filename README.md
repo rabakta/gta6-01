@@ -11,6 +11,29 @@ with traffic and pedestrians, cars to steal, a five-star wanted level with
 police cars and a helicopter, twelve story missions, combat, shops, a safehouse
 garage, a synth radio, and a HUD with a minimap.
 
+## What's new in v5 — graphics update, less flat
+
+- **Facades painted per storey:** every building's window grid is sized to
+  its real height and width, so tall towers stop stretching six window
+  rows. Windows are recessed with a frame, a glint and a sill, and about
+  a third get a painted balcony.
+- **Lit windows that actually glow:** each facade paints a second canvas,
+  an emissive map, so its lit windows shine warm at sunset while the dark
+  ones stay glass.
+- **Roofs with depth:** a parapet rim around every roof edge, four roof
+  colours across the skyline, and rooftop AC boxes for silhouette variety.
+- **Ground detail:** a zebra crossing on every intersection, pastel
+  checkerboard plaza tiles on the four central ones, kerb strips along
+  every road edge, and a darker wet-sand band at the waterline.
+- **Light that reads at dusk:** a hotter sun with deeper shadows, a glow
+  halo behind every neon sign and the marina board, headlight and
+  taillight halos on cars and bikes, and one soft pool of light on the
+  road ahead of whatever Rio is driving.
+- **Sky with depth:** eight soft clouds drifting high over the bay.
+
+No gameplay system changed in v5: missions, taxi fares, packages, bikes,
+buses and pedestrians all work exactly as in v4.
+
 ## What's new in v4
 
 - **Motorbikes and city buses:** a Moto 250 that weaves between lanes and
