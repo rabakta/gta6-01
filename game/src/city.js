@@ -1,9 +1,11 @@
-// BRISA BAY v2 — the city itself: roads, buildings, beach, sea, palms,
+// BRISA BAY v3 — the city itself: roads, buildings, beach, sea, palms,
 // lamps, billboards and the bridge. Everything is built procedurally from
 // one seed, so the map is identical on every run and the screenshots can be
 // re-staged exactly. v2 adds a visible sun disc with a glow, a glittering
 // sea with a foam edge, a lighthouse with a sweeping beam, a pier, neon
-// signs on the shops, glowing street lamps and two more billboards.
+// signs on the shops, glowing street lamps and two more billboards. v3:
+// the collectible packages and taxi fares place themselves on the road
+// lines and the open beach this city builds, so no map change was needed.
 import * as THREE from 'three';
 import { CITY, PALETTE, SHOPS } from './config.js';
 import { mulberry32, pick } from './utils.js';
@@ -157,6 +159,13 @@ export function buildCity(scene) {
       const cx = (lines[ix] + lines[ix + 1]) / 2;
       const cz = (lines[iz] + lines[iz + 1]) / 2;
       const towers = 1 + Math.floor(rng() * 3);
+      // v3: the safehouse lives in this cell (ix 0, iz 5). Seeded towers
+      // here buried it — and with it the first mission's target, the
+      // player spawn and an armour pickup, all unreachable. Only the
+      // scene adds and the collider are skipped for this cell; the meshes
+      // are still built and the rng is still consumed exactly as before,
+      // so every other cell keeps its v2 layout.
+      const skipCell = ix === 0 && iz === 5;
       for (let t = 0; t < towers; t++) {
         const w = 14 + rng() * 16;
         const d = 14 + rng() * 16;
@@ -170,26 +179,29 @@ export function buildCity(scene) {
         tower.position.set(x, h / 2, z);
         tower.castShadow = true;
         tower.receiveShadow = true;
-        scene.add(tower);
+        if (!skipCell) scene.add(tower);
         const roof = new THREE.Mesh(boxGeo, roofMat);
         roof.scale.set(w + 0.6, 0.5, d + 0.6);
         roof.position.set(x, h + 0.25, z);
-        scene.add(roof);
+        if (!skipCell) scene.add(roof);
         // Rooftop box (AC unit / water tank) for silhouette variety.
         if (rng() < 0.6) {
           const unit = new THREE.Mesh(boxGeo, roofMat);
           unit.scale.set(3 + rng() * 3, 1.5 + rng() * 2, 3 + rng() * 3);
           unit.position.set(x + (rng() - 0.5) * w * 0.5, h + 1.2, z + (rng() - 0.5) * d * 0.5);
-          scene.add(unit);
+          if (!skipCell) scene.add(unit);
         }
-        colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+        if (!skipCell) colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
       }
     }
   }
 
   // Landmark towers: the Solmar Casino and the Marina hotel, taller than the
   // rest. Each gets its own facade seed from its position, so the two
-  // landmarks never share a texture.
+  // landmarks never share a texture. Note the casino sits on the (0,-180)
+  // intersection itself — mission steps that point at it must use radii
+  // that reach the tower's faces (see missions.js, Mission 8), because
+  // the centre is inside this collider and no player can ever stand there.
   function buildLandmarkTower(x, z, w, h, d, color) {
     const seed = Math.abs(Math.floor(x * 7 + z * 13)) + 5;
     const m = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ map: facadeTexture(color, seed) }));

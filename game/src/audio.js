@@ -1,8 +1,10 @@
-// BRISA BAY v2 — sound. Everything is synthesised with WebAudio: no audio
+// BRISA BAY v3 — sound. Everything is synthesised with WebAudio: no audio
 // files, no network. Radio stations are tiny step sequencers (bass, lead,
 // snare, hats) over a chord root; SFX are filtered noise and oscillator
 // blips. The engine hum and the police siren are continuous loops whose
-// volume follows the game. v2 adds a pickup chime, a garage upgrade sting
+// volume follows the game. v3: the taxi fares reuse the existing SFX —
+// blip for a pickup, jingle for a delivery, fail for a lost fare — so no
+// new sounds were needed. v2 adds a pickup chime, a garage upgrade sting
 // and a roadblock alert, and the radio now cycles four stations.
 import { RADIO_STATIONS } from './config.js';
 
@@ -128,6 +130,8 @@ export class AudioEngine {
   }
 
   // --- one-shot SFX -------------------------------------------------------
+  // The taxi fares reuse these: blip for a pickup, jingle for a
+  // delivery, fail for a lost fare. No fare-specific sounds exist.
   blip(freq = 880, dur = 0.08, vol = 0.15) {
     if (!this.started) return;
     this.tone(freq, this.ctx.currentTime, dur, 'square', vol);

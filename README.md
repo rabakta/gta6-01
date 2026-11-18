@@ -8,8 +8,27 @@ An open-world crime game in the spirit of GTA 6, built for the
 [make.fun "Make GTA 6" bounty](https://make.fun/bounty/gta6-01). Rio Marin is
 back in Brisa Bay — a sun-soaked coastal city you explore on foot and by car,
 with traffic and pedestrians, cars to steal, a five-star wanted level with
-police cars and a helicopter, eight story missions, combat, shops, a safehouse
+police cars and a helicopter, twelve story missions, combat, shops, a safehouse
 garage, a synth radio, and a HUD with a minimap.
+
+## What's new in v3
+
+- **Mission 11 — Midnight Grand Prix:** a checkpoint street race around the
+  city against two rival cars, timed at 150 seconds.
+- **Mission 12 — The Last Ferry:** the story finale — steal the fastest car
+  in town, make the ferry terminal at the docks, then a five-star escape
+  drive to the airfield.
+- **Taxi fares:** a repeatable side activity. A passenger offer appears while
+  free-roaming; drive up in a car and press E to pick them up, then deliver
+  them before the timer runs out for cash plus a speed tip. Fares keep
+  coming; the fare shows in the HUD objective line and as an amber blip on
+  the minimap.
+- **20 collectible packages:** hidden parcels across the city — beach, docks,
+  lighthouse path, pier, alleys. Walk or drive through one to collect it;
+  the count persists in the save, and all 20 pay a $5,000 bonus. They are
+  deliberately not on the minimap: finding them is the game.
+- **Fix:** Mission 8's casino steps sat on the casino tower itself, so they
+  could never be reached. The radii now reach the tower's faces.
 
 ## Play
 
@@ -23,8 +42,9 @@ node serve.ts
 No build step, no network request at runtime: every file the game loads sits
 under `game/`, with three.js vendored as `game/vendor/three.module.min.js`.
 
-**Controls:** WASD drive / walk · SHIFT run · E enter or steal a car · F punch ·
-CLICK shoot · R radio · M next mission · P pause · mouse drag orbits the camera.
+**Controls:** WASD drive / walk · SHIFT run · E enter or steal a car / open a
+shop / pick up a taxi fare · F punch · CLICK shoot · R radio · M next mission ·
+P pause · mouse drag orbits the camera.
 
 ## Layout
 
@@ -33,9 +53,10 @@ CLICK shoot · R radio · M next mission · P pause · mouse drag orbits the cam
 - `game/index.html` — the page and the HUD.
 - `game/src/` — the game, one file per system: `city`, `vehicles`, `player`,
   `pedestrians`, `combat`, `missions`, `hud`, `audio`, `save`, `shots`,
-  `textures`, `config`, `utils`.
+  `textures`, `pickups`, `taxi`, `collectibles`, `config`, `utils`.
 - `game/vendor/three.module.min.js` — three.js r160, vendored.
-- `screenshots/` — four real renders of the game, staged with `?shot=`.
+- `screenshots/` — four real renders of the game, staged with `?shot=`
+  (race, chase, taxi, packages).
 
 ## License
 

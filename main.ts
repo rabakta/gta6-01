@@ -1,9 +1,10 @@
-// BRISA BAY v2 — the entrypoint make.fun runs (Node 22, standard library
+// BRISA BAY v3 — the entrypoint make.fun runs (Node 22, standard library
 // only). It hands the game in: copy game/ and screenshots/ from beside this
 // file into /output and write /output/dossier.json, the summary the judge
 // reads, with the vendored make.fun library. The game itself is plain
 // static files a desktop browser loads offline — no build step, no network
-// request.
+// request. v3: twelve story missions, taxi fares, twenty collectible
+// packages, and the same gate limits as v2.
 //
 // Run it locally the same way the grader does, with MAKEFUN_OUTPUT_DIR in
 // place of /output:
@@ -19,7 +20,8 @@ import { buildDossier } from './vendor/makefun-game.ts';
 // would refuse — more than 4 screenshots or one over 256 KiB, more than 993
 // files in game/ or 48 MiB of game files in all, or a path under game/ over
 // 1000 bytes. game/ counts beside /output's own 1000-entry cap, together
-// with its screenshots/ and dossier.json.
+// with its screenshots/ and dossier.json. screenshots/ is copied as-is and
+// must hold 3-4 files; the check above fails loudly on a fifth.
 const GATE = {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },

@@ -1,8 +1,9 @@
-// BRISA BAY v2 — world pickups. Glowing health crosses and armour diamonds
+// BRISA BAY v3 — world pickups. Glowing health crosses and armour diamonds
 // sit at fixed spots around the city (hospital, docks, beach, safehouse).
 // Walk or drive over one to take it; it comes back after its respawn time.
 // A full-health Rio leaves a health cross alone, so the pickup stays on
-// the map for when he needs it.
+// the map for when he needs it. (The v3 collectible packages are a separate
+// system in collectibles.js: one-offs that never respawn.)
 import * as THREE from 'three';
 import { PICKUPS, PICKUP_HEALTH, PICKUP_ARMOR } from './config.js';
 import { glowTexture } from './textures.js';
@@ -58,7 +59,8 @@ export class PickupManager {
         continue;
       }
       // Bob and spin so the pickup reads as a live object, not scenery;
-      // the halo breathes with the bob.
+      // the halo breathes with the bob. Same 2.4 m take radius as the
+      // v3 collectible packages, so both "walk over it" pickups feel alike.
       item.group.position.y = 1.4 + Math.sin(t * 2 + item.phase) * 0.3;
       item.mesh.rotation.y += dt * 1.5;
       item.glow.material.opacity = 0.45 + Math.sin(t * 2 + item.phase) * 0.15;

@@ -1,11 +1,13 @@
-// BRISA BAY v2 — cars: the player's ride, city traffic and the BCPD.
+// BRISA BAY v3 — cars: the player's ride, city traffic and the BCPD.
 // Arcade handling (no physics engine): each car is a heading + speed on
 // the road grid, with circle-vs-box building collision and circle-vs-circle
 // car collision. Traffic follows the road lines; police pursue the player
 // and the helicopter orbits from three stars up. v2 adds glossy paint
 // (Phong bodies that catch the sunset), working brake lights, garage
 // upgrades that change the car's real performance and silhouette, and
-// police roadblocks at four and five stars.
+// police roadblocks at four and five stars. v3: the Grand Prix rivals
+// steer with the same chase maths as the police (see raceDrive in
+// missions.js), so no new driving code was needed.
 import * as THREE from 'three';
 import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT } from './config.js';
 import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
@@ -432,6 +434,8 @@ export class PoliceManager {
       this.scene.remove(c.mesh);
     }
     // Chase: steer at the player's predicted position, ram on contact.
+    // The Grand Prix rivals steer the same way (see raceDrive in
+    // missions.js): same angleDiff, same 1.6 gain, same sign.
     for (const car of this.cars) {
       if (car.dead) continue;
       const dx = playerPos.x - car.pos.x, dz = playerPos.z - car.pos.z;

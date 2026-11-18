@@ -1,4 +1,4 @@
-// BRISA BAY v2 — pedestrians: beach-goers and city walkers, plus the armed
+// BRISA BAY v3 — pedestrians: beach-goers and city walkers, plus the armed
 // guards missions spawn. A ped is a low-poly figure (torso, head, legs)
 // that strolls the sidewalks; danger nearby (a speeding car, gunfire, an
 // explosion) makes it flee, and a fleeing ped spreads the panic to the
@@ -136,6 +136,8 @@ export class PedManager {
   }
 
   // Armed guards for a mission step, standing at fixed posts.
+  // (The taxi passenger is not a Ped — it is a static figure owned by
+  // taxi.js, with no AI, no health and no flee behaviour.)
   spawnGuards(positions, health = 60) {
     const guards = [];
     for (const p of positions) {

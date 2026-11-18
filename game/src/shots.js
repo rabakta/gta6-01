@@ -1,8 +1,11 @@
-// BRISA BAY v2 — screenshot staging. `?shot=menu|foot|chase|mission`
+// BRISA BAY v3 — screenshot staging. `?shot=menu|foot|chase|mission`
 // drops the game straight into a composed scene so a screenshot shows the
 // systems at their best, with no menu in the way. `?shot=garage` opens the
-// garage shop for a verification shot. Used only for the entry's
-// screenshots and for testing the new systems.
+// garage shop for a verification shot. v3 adds `?shot=race` (the Grand
+// Prix, the cover shot), `?shot=taxi` (a fare offer, passenger and amber
+// beacon in frame) and `?shot=packages` (Rio on foot beside a gold
+// collectible parcel). Used only for the entry's screenshots and for
+// testing the new systems.
 export function shotParam() {
   const q = new URLSearchParams(location.search);
   return q.get('shot');
@@ -153,6 +156,62 @@ export function stageShot(game, shot) {
     g.nearShop = shop;
     g.openShop(shop);
     g.player.camDist = 9;
+  } else if (shot === 'race') {
+    // v3 cover shot: the Midnight Grand Prix. Rio in a Furia on the
+    // start line at Coral Row (x=-180 road, facing south toward the
+    // first checkpoint), the race already running. The goto step
+    // completes on the first update frame — Rio is already on the line —
+    // and the race step spawns the mission Furia and the two rival
+    // Ventos ahead of him, with the gold checkpoint beacon 60m down the
+    // road. (Same ~0.15s rule as the chase shot: stage it, don't drive it.)
+    const car = g.spawnCar('furia', 0xf2c230, -180, 120, Math.PI);
+    g.enterCar(car);
+    car.speed = 20;
+    g.player.pos.copy(car.pos); // see chase: staging reads player.pos
+    g.player.heading = car.heading;
+    g.player.camYaw = car.heading + Math.PI; // see chase: no mid-swing camera
+    g.keys.KeyW = true;
+    g.missions.startMission(10);
+    g.traffic.spawn(5, { x: -180, z: -60 }, 90);
+    // Clear the lane ahead, as in the chase shot: a staged traffic car
+    // on the x=-180 road turns the race into a rear-end shunt.
+    const rfx = Math.sin(car.heading), rfz = Math.cos(car.heading);
+    for (const c of [...g.traffic.cars]) {
+      const dx = c.pos.x - car.pos.x, dz = c.pos.z - car.pos.z;
+      const ahead = dx * rfx + dz * rfz;
+      const side = Math.abs(dx * rfz - dz * rfx);
+      if (ahead > 0 && ahead < 60 && side < 4) {
+        g.scene.remove(c.mesh);
+        g.traffic.cars = g.traffic.cars.filter((x) => x !== c);
+      }
+    }
+    g.peds.spawn(6, { x: -180, z: 60 }, 70);
+    g.player.camDist = 11;
+  } else if (shot === 'taxi') {
+    // v3: a taxi fare offer. Rio in a Taxi Sol on the central east-west
+    // road (z=0), the passenger standing 30m ahead with the amber beacon
+    // over them and the fare on the HUD objective line. The passenger
+    // faces the car, so the shot reads as a pickup about to happen.
+    const car = g.spawnCar('taxi', 0xf2a007, 0, 10, Math.PI);
+    g.enterCar(car);
+    car.speed = 0;
+    g.player.pos.copy(car.pos); // see chase: staging reads player.pos
+    g.player.heading = car.heading;
+    g.player.camYaw = car.heading + Math.PI; // see chase: no mid-swing camera
+    g.taxi.stageOffer({ x: 0, z: -20, name: 'the Plaza' });
+    g.traffic.spawn(5, { x: 0, z: -60 }, 80);
+    g.peds.spawn(6, { x: 0, z: -30 }, 60);
+    g.player.camDist = 10;
+  } else if (shot === 'packages') {
+    // v3: Rio on foot at the Plaza, a gold collectible parcel glowing
+    // 10m ahead of him. The package bob and spin read in the frame, and
+    // the objective line shows the package count once one is found.
+    g.player.pos.set(0, 0, 20);
+    g.player.heading = 0; // facing +Z, toward the package at (0, 30)
+    g.player.camYaw = 0 + Math.PI;
+    g.traffic.spawn(6, { x: 0, z: 60 }, 90);
+    g.peds.spawn(8, { x: 0, z: 30 }, 60);
+    g.player.camDist = 8;
   }
   // Let the world settle for a beat so the first rendered frame is composed.
   g.warmupFrames = 30;

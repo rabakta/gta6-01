@@ -1,7 +1,8 @@
-// BRISA BAY v2 — HUD: DOM readouts (cash, health, stars, weapon, speed,
+// BRISA BAY v3 — HUD: DOM readouts (cash, health, stars, weapon, speed,
 // radio, objective, toasts, menus) and the 2D minimap canvas with live
 // blips for the player, traffic, police, the helicopter, the mission
-// marker, world pickups and police roadblocks. v2 also shows the garage
+// marker, world pickups, police roadblocks and taxi fares. v3 adds the
+// amber fare blip (a $ in a gold circle). v2 also shows the garage
 // upgrade levels under the vitals, so a tuned ride is always visible.
 import { CITY, WANTED_MAX } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
@@ -49,7 +50,7 @@ export class HUD {
   update(dt, state) {
     // state: { cash, health, armor, wanted, weaponName, ammo, speedKmh,
     //   radio, objective, clockSec, player, cars, police, heliPos,
-    //   markerPos, shops, pickups, roadblocks, mods }
+    //   markerPos, shops, pickups, roadblocks, mods, fare }
     this.el.cash.textContent = fmtMoney(state.cash);
     this.el['health-fill'].style.width = Math.max(0, state.health) + '%';
     this.el['health-num'].textContent = Math.max(0, Math.round(state.health));
@@ -162,6 +163,19 @@ export class HUD {
       const [x, z] = toMap(c.pos.x, c.pos.z);
       ctx.fillStyle = c.kind === 'police' ? '#4da3ff' : 'rgba(200,200,200,0.8)';
       ctx.fillRect(x - 2, z - 2, 4, 4);
+    }
+    // v3: taxi fare — an amber circle with a $ in it, at the passenger
+    // while offered, at the destination while riding. Drawn after the
+    // traffic so a car dot never hides it. Collectible packages are
+    // deliberately NOT on the map: finding them is the game.
+    if (state.fare) {
+      const [fx, fz] = toMap(state.fare.x, state.fare.z);
+      const pulse = 5 + Math.sin(performance.now() / 200) * 1.5;
+      ctx.fillStyle = '#f2a007';
+      ctx.beginPath(); ctx.arc(fx, fz, pulse, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1d2733';
+      ctx.font = 'bold 9px Arial, sans-serif';
+      ctx.fillText('$', fx - 2.5, fz + 3);
     }
     // Police helicopter: a blue ring with a dot, so it reads at a glance.
     if (state.heliPos) {

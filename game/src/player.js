@@ -1,4 +1,4 @@
-// BRISA BAY v2 — Rio on foot: third-person movement, camera rig, entering
+// BRISA BAY v3 — Rio on foot: third-person movement, camera rig, entering
 // cars. The camera orbits with the mouse (drag) and settles behind Rio when
 // he runs; driving adds a walk bob on foot and a speed FOV kick in a car.
 // v2: the FOV kick reads the car's effective top speed, so an engine-tuned
@@ -79,7 +79,9 @@ export class Player {
 
   // Third-person camera: behind the car when driving, behind Rio on foot.
   // `target` is a plain {x, y, z}. Adds a walk bob on foot and a speed
-  // FOV kick while driving.
+  // FOV kick while driving. The chase cam sits at heading + PI — the
+  // same convention shots.js stages with, so a staged frame never catches
+  // the camera mid-swing.
   updateCamera(dt, camera, target) {
     const desiredDist = this.inCar ? 10.5 : 7.5;
     if (this.inCar) {

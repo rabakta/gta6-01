@@ -1,12 +1,13 @@
-// BRISA BAY v2 — save / load. Progress lives in localStorage only; nothing
+// BRISA BAY v3 — save / load. Progress lives in localStorage only; nothing
 // is sent anywhere. A save holds cash, the story chapter, owned weapons and
-// ammo, owned cars, garage upgrades and the player's best stats. Loads are
-// sanitised: a save from an older build, or one a player edited by hand,
-// can never hand the game a weapon it does not own, an upgrade level past
-// the cap, or a chapter past the end of the story.
-import { SAVE_KEY, MISSION_META, WEAPONS } from './config.js';
+// ammo, owned cars, garage upgrades, the collectible packages found so far
+// and the player's best stats. Loads are sanitised: a save from an older
+// build, or one a player edited by hand, can never hand the game a weapon
+// it does not own, an upgrade level past the cap, a package id that does
+// not exist, or a chapter past the end of the story.
+import { SAVE_KEY, MISSION_META, WEAPONS, COLLECTIBLES } from './config.js';
 
-export const SAVE_VERSION = 2; // v2: the save gains the upgrades field
+export const SAVE_VERSION = 3; // v3: the save gains the packages list and fare stats
 
 export function defaultSave() {
   return {
@@ -18,6 +19,8 @@ export function defaultSave() {
     // Garage upgrades: each 0..2 (see UPGRADES in config.js).
     upgrades: { armor: 0, engine: 0, tires: 0 },
     ownedCars: [],
+    // Collectible packages found, by index into COLLECTIBLES (0..19).
+    packages: [],
     stats: {
       missionsDone: 0,
       missionsFailed: 0,
@@ -25,6 +28,10 @@ export function defaultSave() {
       pedsHit: 0,
       copsDodged: 0,
       playSeconds: 0,
+      // v3: taxi fares and packages.
+      faresDone: 0,
+      faresEarned: 0,
+      packagesFound: 0,
     },
   };
 }
@@ -56,11 +63,25 @@ export function sanitizeSave(raw) {
     clean.currentWeapon = raw.currentWeapon;
   }
   if (Array.isArray(raw.ownedCars)) clean.ownedCars = raw.ownedCars.filter((c) => typeof c === 'string');
+  // v3: packages — keep only valid ids, deduplicated, in order. A v2 save
+  // has no field at all, which sanitises to an empty list: a returning
+  // player simply finds the packages fresh.
+  if (Array.isArray(raw.packages)) {
+    const seen = new Set();
+    clean.packages = raw.packages.filter((id) => {
+      if (!Number.isInteger(id) || id < 0 || id >= COLLECTIBLES.length || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
   if (typeof raw.stats === 'object' && raw.stats !== null) {
     for (const key of Object.keys(clean.stats)) {
       if (Number.isFinite(raw.stats[key])) clean.stats[key] = Math.max(0, Math.floor(raw.stats[key]));
     }
   }
+  // The packages stat is derived from the list, never trusted from the
+  // blob — a hand-edited save cannot claim 20 found with 3 in the list.
+  clean.stats.packagesFound = clean.packages.length;
   return clean;
 }
 

@@ -1,8 +1,9 @@
-// BRISA BAY v2 — procedural textures. Every surface is painted on a canvas
+// BRISA BAY v3 — procedural textures. Every surface is painted on a canvas
 // at load time, so the game ships no image files and loads nothing over the
 // network. Seeded canvases keep the city identical on every run. v2 adds a
 // glow sprite for lamps and pickups, neon shop signs, and the striped
-// roadblock barrier face.
+// roadblock barrier face. v3 reuses the same glow sprite for the taxi
+// beacons and the collectible parcels.
 import * as THREE from 'three';
 import { makeCanvas, mulberry32, pick } from './utils.js';
 
@@ -185,6 +186,8 @@ export function roofTexture(base) {
 
 // Glow sprite: a soft radial blob, used for street lamps, pickup halos,
 // the sun disc glow and the lighthouse lamp. One texture, many sprites.
+// v3 reuses it for the taxi beacons and the collectible parcels, so the
+// new systems add no new texture code.
 export function glowTexture() {
   const c = makeCanvas(64, 64);
   const g = c.getContext('2d');

@@ -1,7 +1,8 @@
-// BRISA BAY v2 — tuning tables and content data for the whole game.
+// BRISA BAY v3 — tuning tables and content data for the whole game.
 // Every number the game balances on lives here, so a tune is one edit and
-// no system hides a magic number of its own. v2 adds the garage upgrade
-// ladder, world pickups, a fourth radio station and two new missions.
+// no system hides a magic number of its own. v3 adds two story chapters
+// (a checkpoint race and the finale), the taxi fare system and the 20
+// collectible packages.
 
 // ---------------------------------------------------------------------------
 // The city: a square grid of blocks. Roads run on the grid lines; the beach
@@ -131,8 +132,8 @@ export const RADIO_STATIONS = [
 
 // ---------------------------------------------------------------------------
 // Story. Full step scripts live in missions.js; this table is the chapter
-// select the start screen and the HUD read from. v2 adds two chapters:
-// a timed delivery and an escape from Vex's tail.
+// select the start screen and the HUD read from. v3 adds two chapters:
+// the Grand Prix race and the finale at the ferry.
 // ---------------------------------------------------------------------------
 export const MISSION_META = [
   { name: 'Homecoming',    reward: 300,  brief: 'Rio Marin is back in Brisa Bay. Get wheels and reach the safehouse.' },
@@ -145,6 +146,8 @@ export const MISSION_META = [
   { name: 'The Last Job',  reward: 5000, brief: 'The Solmar Casino vault. Five stars on the way out. Get home, Rio.' },
   { name: 'Sunset Run',    reward: 2600, brief: 'A parcel at the docks, an airfield deadline. Seventy-five seconds, two stars.' },
   { name: 'Lose the Tail', reward: 3200, brief: 'Vex is on your tail. Sixty seconds - do not let him touch you.' },
+  { name: 'Midnight Grand Prix', reward: 3500, brief: 'Six checkpoints, two rivals, one start line. Beat Vex\u2019s crew around the city - 150 seconds.' },
+  { name: 'The Last Ferry',      reward: 5000, brief: 'Steal the fastest car in town, make the ferry at the docks, then a five-star escape to the airfield. The last job.' },
 ];
 
 export const STORY_INTRO = [
@@ -152,4 +155,76 @@ export const STORY_INTRO = [
   'Rio Marin drove getaway for the Solmar crew for six years.',
   'Then Vex sold him out, and Rio did three years upstate.',
   'Now he is back - and the city still owes him.',
+];
+
+// ---------------------------------------------------------------------------
+// v3 additions.
+// ---------------------------------------------------------------------------
+
+// The Grand Prix route: a clockwise loop of the city on the outer ring
+// roads. Every checkpoint sits on an intersection, so the rivals and the
+// player both follow real roads. The loop is about 900 m; a tuned Furia
+// covers it in roughly a minute, the rivals in a little over one.
+export const RACE_CHECKPOINTS = [
+  { x: -180, z: 60 },
+  { x: -180, z: -120 },
+  { x: 60, z: -120 },
+  { x: 60, z: -180 },
+  { x: 180, z: -180 },
+  { x: 180, z: 60 },
+];
+
+// Taxi fares: the repeatable side activity. A fare offer appears while
+// free-roaming; drive up in a car and press E to pick the passenger up,
+// then deliver them before the timer runs out. Pay is a base fare plus a
+// per-metre rate, with a speed tip on top.
+export const TAXI = {
+  // Seconds after free-roam starts before the first offer appears.
+  firstOfferDelay: 20,
+  // Seconds between offers once one ends (picked up, delivered, lost
+  // or expired).
+  cooldown: 15,
+  // How long an offer stays on the map before the fare finds another cab.
+  offerExpiry: 75,
+  // The passenger must be picked up within this distance, in a car.
+  pickupRadius: 12,
+  // Delivery counts inside this distance of the destination.
+  destRadius: 10,
+  baseFare: 80,
+  // Extra dollars per metre of trip length.
+  perMeter: 0.3,
+  // Delivery timer: metres / 16, clamped to this range.
+  minTime: 45,
+  maxTime: 90,
+  // Tip for a fast delivery: seconds left on the timer, capped.
+  maxTip: 60,
+};
+
+// Collectible packages: 20 hidden parcels across the city. Walking or
+// driving through one collects it; the count lives in the save, and all
+// 20 pay a one-off bonus. Every spot has at least one coordinate on a
+// road line, or sits outside the block grid (beach, city edge), so none
+// can hide inside a building collider.
+export const COLLECTIBLE_BONUS = 5000;
+export const COLLECTIBLES = [
+  { x: 206, z: 140, name: 'Marina boardwalk' },
+  { x: 192, z: 30, name: 'Beachfront cafe' },
+  { x: 180, z: -140, name: 'Dockside crane' },
+  { x: 120, z: -170, name: 'South market' },
+  { x: 60, z: -206, name: 'Lighthouse path' },
+  { x: -30, z: -206, name: 'North edge lay-by' },
+  { x: -150, z: -170, name: 'Airfield approach' },
+  { x: -206, z: -90, name: 'Coral Row alley' },
+  { x: -206, z: 40, name: 'West promenade' },
+  { x: -180, z: 170, name: 'Coral Row garage' },
+  { x: -60, z: 200, name: 'Palm Row bench' },
+  { x: 60, z: 170, name: 'Beach lifeguard hut' },
+  { x: 120, z: 60, name: 'Downtown arcade' },
+  { x: -120, z: 0, name: 'Casino west door' },
+  { x: 0, z: -30, name: 'Plaza fountain' },
+  { x: 0, z: 30, name: 'Plaza flower stall' },
+  { x: 120, z: -90, name: 'North market stall' },
+  { x: -120, z: -90, name: 'Northwest corner shop' },
+  { x: -60, z: -150, name: 'Lookout car park' },
+  { x: 150, z: 120, name: 'Beachfront apartments' },
 ];

@@ -1,4 +1,4 @@
-// BRISA BAY v2 — combat: fists, guns, muzzle flashes, tracers, explosions
+// BRISA BAY v3 — combat: fists, guns, muzzle flashes, tracers, explosions
 // and the particle system that sells all of them (skid smoke, sparks,
 // fire). v2 adds explosion debris — heavy chunks that arc and fall — and a
 // puff of muzzle smoke with every shot, so gunfire reads in daylight.
@@ -150,6 +150,9 @@ export class Combat {
 
   // Fire `weaponKey` from `origin` along `dir`. Hits the nearest ped / car /
   // guard in range. Returns a hit report for wanted + mission hooks.
+  // Targets include the Grand Prix rivals (kind 'race'): shooting one
+  // during the race is allowed, it just slows them down — a dead rival
+  // is skipped by the race update instead of ending the race.
   fire(weaponKey, origin, dir, targets, audio) {
     if (this.cooldown > 0) return null;
     const w = WEAPONS[weaponKey];

@@ -1,6 +1,7 @@
-// BRISA BAY — shared math, random and formatting helpers.
+// BRISA BAY v3 — shared math, random and formatting helpers.
 // Every system imports from here, so nothing here knows about the game
-// itself: pure functions only, no DOM, no three.js.
+// itself: pure functions only, no DOM, no three.js. v3 fixes a stale
+// comment: heading 0 faces +Z (forward is (sin h, cos h)), not -Z.
 
 import { CITY } from './config.js';
 
@@ -56,6 +57,8 @@ export function smoothstep(edge0, edge1, x) {
 }
 
 // Flat distance on the ground plane; the city is a 2D map with height paint.
+// Despite the name, this is the real Euclidean distance, not the squared
+// one — every caller compares it against a radius in metres.
 export function dist2(ax, az, bx, bz) {
   const dx = ax - bx;
   const dz = az - bz;
@@ -72,7 +75,9 @@ export function angleDiff(from, to) {
 export function angleLerp(a, b, t) { return a + angleDiff(a, b) * t; }
 
 // ---------------------------------------------------------------------------
-// Headings: radians, 0 = facing -Z (north on the minimap).
+// Headings: radians, 0 = facing +Z (forward is (sin h, cos h); the minimap
+// draws +Z down, so north on the map is -Z). A chase camera sits at
+// heading + PI, behind the car.
 // ---------------------------------------------------------------------------
 
 export function headingToVector(h) { return { x: Math.sin(h), z: Math.cos(h) }; }

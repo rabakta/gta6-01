@@ -1,8 +1,10 @@
-// BRISA BAY v2 — boot, game loop and the glue between systems.
+// BRISA BAY v3 — boot, game loop and the glue between systems.
 // Rio Marin is back in Brisa Bay: drive, steal, run missions, dodge the
-// BCPD. v2: filmic tone mapping for the sunset, garage upgrades, world
-// pickups, police roadblocks, exhaust and dust, brake lights, a fourth
-// radio station and two new missions.
+// BCPD. v3: two new story chapters (the Grand Prix race and the finale),
+// taxi fares and 20 collectible packages, and a fix for Mission 8, whose
+// casino steps could never be reached. v2: filmic tone mapping for the
+// sunset, garage upgrades, world pickups, police roadblocks, exhaust and
+// dust, brake lights, a fourth radio station and two new missions.
 import * as THREE from 'three';
 import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
@@ -13,6 +15,8 @@ import { PedManager } from './pedestrians.js';
 import { Combat, ParticleSystem } from './combat.js';
 import { MissionManager } from './missions.js';
 import { PickupManager } from './pickups.js';
+import { TaxiManager } from './taxi.js';
+import { CollectibleManager } from './collectibles.js';
 import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
@@ -39,6 +43,7 @@ class Game {
     this.hud = new HUD(this.world);
     this.save = loadSave() || defaultSave();
     if (!this.save.upgrades) this.save.upgrades = { armor: 0, engine: 0, tires: 0 };
+    if (!this.save.packages) this.save.packages = [];
 
     this.player = new Player(this.scene, -140, 140);
     this.player.health = 100;
@@ -49,6 +54,9 @@ class Game {
     this.combat = new Combat(this.scene, this.particles);
     this.missions = new MissionManager(this);
     this.pickups = new PickupManager(this.scene, this.world);
+    // v3: the side activities — taxi fares and collectible packages.
+    this.taxi = new TaxiManager(this);
+    this.collectibles = new CollectibleManager(this.scene, this.save);
 
     this.keys = {};
     this.state = 'menu'; // menu | playing | paused | wasted | busted | ending
@@ -94,12 +102,17 @@ class Game {
   startMenuBody() {
     const hasSave = !!loadSave();
     const next = this.save.missionIndex < MISSION_META.length ? MISSION_META[this.save.missionIndex] : null;
+    // v3: the side-activity ledger — packages found, fares run, fare cash.
+    const pkgs = this.save.packages ? this.save.packages.length : 0;
+    const fares = (this.save.stats && this.save.stats.faresDone) || 0;
+    const faresEarned = (this.save.stats && this.save.stats.faresEarned) || 0;
     return (
       '<p class="story">' + STORY_INTRO.join('<br>') + '</p>' +
       '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car / shop &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot<br>' +
       'H horn &nbsp;·&nbsp; Q radio on/off &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M next mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; Mouse drag: camera</p>' +
       (next ? '<p class="next">Next mission: <b>' + next.name + '</b> — ' + next.brief + '</p>' : '<p class="next">Story complete. Free roam, Rio.</p>') +
-      '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of ' + MISSION_META.length + '. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>'
+      '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of ' + MISSION_META.length + '. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>' +
+      ((pkgs > 0 || fares > 0) ? '<p class="save-line">Packages ' + pkgs + '/20 · Taxi fares ' + fares + ' · Fare cash ' + fmtMoney(faresEarned) + '</p>' : '')
     );
   }
 
@@ -108,6 +121,18 @@ class Game {
   notify(text) { this.hud.notify(text); }
   setWanted(n) { this.wanted = clamp(Math.round(n), 0, 5); this.wantedDecay = 0; }
   addWanted(n) { this.setWanted(this.wanted + n); }
+
+  // The objective line: an active mission owns it; a live fare comes
+  // next; otherwise the next mission, with the package count appended
+  // once Rio has found at least one.
+  objectiveText() {
+    if (this.missions.state === 'active') return this.missions.objectiveText();
+    const taxi = this.taxi.objectiveText();
+    if (taxi) return taxi;
+    const base = this.missions.objectiveText();
+    const n = this.save.packages ? this.save.packages.length : 0;
+    return n > 0 ? base + ' · Packages ' + n + '/20' : base;
+  }
 
   // --- input ------------------------------------------------------------------
   bindInput() {
@@ -174,6 +199,10 @@ class Game {
     if (newGame) {
       clearSave();
       this.save = defaultSave();
+      // The collectible manager holds a reference to the save object, so
+      // a new game has to re-point it or packages would write to the old
+      // save and the HUD would read the new (empty) one.
+      this.collectibles.reset(this.save);
       this.player.health = 100;
       this.player.armor = 0;
       this.setWanted(0);
@@ -210,6 +239,7 @@ class Game {
     if (this.missions.rival) list.push(this.missions.rival);
     if (this.missions.tail) list.push(this.missions.tail);
     if (this.missions.targetCar) list.push(this.missions.targetCar);
+    for (const r of this.missions.racers) list.push(r);
     return list.filter((c) => !c.dead);
   }
 
@@ -247,6 +277,9 @@ class Game {
   onInteract() {
     if (this.state !== 'playing') return;
     if (this.shopOpen) return;
+    // v3: a fare pickup beats exiting the car — pressing E next to a
+    // waiting passenger in a cab picks them up, it does not step out.
+    if (this.taxi.tryPickup()) return;
     if (this.player.inCar) { this.exitCar(); return; }
     if (this.nearShop) { this.openShop(this.nearShop); return; }
     const car = this.nearestCar(3.4);
@@ -536,13 +569,15 @@ class Game {
       }
     }
 
-    // Traffic + police + peds + missions + pickups.
+    // Traffic + police + peds + missions + pickups + fares + packages.
     this.traffic.update(dt, p.pos, this.allCars());
     this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars(), p.heading);
     const danger = this.wanted > 0 ? { x: p.pos.x, z: p.pos.z, r: 25 } : null;
     this.peds.update(dt, danger, p.pos);
     this.missions.update(dt);
     this.pickups.update(dt, p.pos, this);
+    this.taxi.update(dt);
+    this.collectibles.update(dt, p.pos, this);
     this.combat.update(dt);
     this.particles.update(dt);
     this.audio.update();
@@ -618,7 +653,7 @@ class Game {
       speedKmh: p.inCar ? Math.abs(p.inCar.speed) * 3.6 : p.speed * 3.6,
       carHealth: p.inCar ? p.inCar.health : null,
       radio: this.audio.stationName(),
-      objective: this.missions.objectiveText(),
+      objective: this.objectiveText(),
       clockSec: this.clockSec % 86400,
       player: { x: p.pos.x, z: p.pos.z, heading: p.heading },
       cars: this.allCars(),
@@ -627,6 +662,7 @@ class Game {
       pickups: this.pickups.activePickups(),
       roadblocks: this.police.blockers.map((b) => ({ x: b.x, z: b.z, heading: b.heading })),
       mods: this.save.upgrades || { armor: 0, engine: 0, tires: 0 },
+      fare: this.taxi.minimapBlip(),
     });
     if (this.elapsed % 30 < dt) this.writeSave();
   }
@@ -659,5 +695,9 @@ window.addEventListener('error', (e) => { document.title = 'ERR: ' + (e.message 
 const game = new Game();
 // Screenshot staging must run after the first boot, before capture.
 if (game.shotMode) {
+  // Test hook: live probes reach the game only in shot mode, never in
+  // normal play. The CDP verification drives missions, fares and
+  // packages through this handle.
+  window.__game = game;
   requestAnimationFrame(() => setTimeout(() => stageShot(game, game.shotMode), 300));
 }

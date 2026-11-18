@@ -1,13 +1,17 @@
-// BRISA BAY v2 — the story: ten chapters of Rio Marin's return to Brisa
-// Bay. A mission is a list of steps; the manager runs them in order, plants
-// a beacon on the current objective, and pays out when the last step clears.
-// v2 adds two chapters: a timed delivery (Sunset Run) and an escape from
-// Vex's tail (Lose the Tail), which introduces the new `evade` step type.
+// BRISA BAY v3 — the story: twelve chapters of Rio Marin's return to
+// Brisa Bay. A mission is a list of steps; the manager runs them in order,
+// plants a beacon on the current objective, and pays out when the last
+// step clears. v3 adds two chapters: a checkpoint street race (Midnight
+// Grand Prix, new `race` step type) and the finale (The Last Ferry), and
+// fixes Mission 8 — its first two steps sat on the casino tower itself,
+// so the radii could never be reached from outside the building.
 import * as THREE from 'three';
-import { MISSION_META } from './config.js';
+import { MISSION_META, RACE_CHECKPOINTS } from './config.js';
 import { dist2, mulberry32, randomPointInCircle, angleDiff, clamp } from './utils.js';
 
-const MISSIONS = [
+// Exported so tests (and future rounds) can check every step's
+// coordinates against the real city colliders.
+export const MISSIONS = [
   {
     steps: [
       { type: 'goto', x: -150, z: 150, radius: 10, text: 'Reach the safehouse on Coral Row' },
@@ -53,8 +57,13 @@ const MISSIONS = [
   },
   {
     steps: [
-      { type: 'goto', x: 0, z: -180, radius: 10, text: 'Get inside the Solmar Casino' },
-      { type: 'collect', x: 0, z: -180, radius: 5, text: 'Empty the vault' },
+      // v3 fix: the Solmar Casino tower sits on the (0,-180) intersection
+      // itself, so the centre of the building is inside a collider and no
+      // player can ever stand within 10m of it. The radii here reach the
+      // tower's faces (closest approach ~14m), so the steps complete from
+      // the south door instead of never completing at all.
+      { type: 'goto', x: 0, z: -180, radius: 18, text: 'Get inside the Solmar Casino' },
+      { type: 'collect', x: 0, z: -180, radius: 16, text: 'Empty the vault' },
       { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Five stars. Get home, Rio.', wanted: 5 },
     ],
   },
@@ -69,6 +78,37 @@ const MISSIONS = [
     steps: [
       { type: 'evade', seconds: 60, text: 'Lose the tail - keep Vex off you for 60 seconds' },
       { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Get home to the safehouse' },
+    ],
+  },
+  // Mission 11 — the Grand Prix. The goto step puts Rio on the start line
+  // at Coral Row; the race step spawns the mission Furia and two rival
+  // Ventos and runs the six checkpoints around the city, timed at 150s.
+  // The rivals drive the same route at a steady pace, so the race is won
+  // by clean driving, not by outrunning a scripted ghost.
+  {
+    steps: [
+      { type: 'goto', x: -180, z: 120, radius: 10, text: 'Meet Vex at the Coral Row start line' },
+      {
+        type: 'race',
+        startX: -180,
+        startZ: 110,
+        checkpoints: RACE_CHECKPOINTS,
+        seconds: 150,
+        text: 'Beat the rivals around all 6 checkpoints',
+      },
+      { type: 'goto', x: 0, z: 0, radius: 10, text: 'Collect the prize at the Plaza' },
+    ],
+  },
+  // Mission 12 — the finale. Steal the fast car at the marina (parked just
+  // south of the hotel, clear of its collider), make the ferry terminal
+  // at the docks, then a five-star escape drive to the airfield. When this
+  // pays out, the story is complete.
+  {
+    steps: [
+      { type: 'goto', x: 180, z: 120, radius: 10, text: 'Reach the Marina' },
+      { type: 'steal', x: 180, z: 130, defKey: 'furia', color: 0xd94f43, text: 'Steal the red Furia GT — the fastest car in town' },
+      { type: 'goto', x: 180, z: -150, radius: 10, text: 'Reach the ferry terminal at the docks' },
+      { type: 'timed', x: -180, z: -180, radius: 12, seconds: 120, wanted: 5, text: '5-star escape — reach the airfield in 120s' },
     ],
   },
 ];
@@ -91,6 +131,8 @@ export class MissionManager {
     this.tail = null; // evade step: Vex's chasing Vento
     this.guards = [];
     this.targetCar = null;
+    this.racers = []; // race step: the rival cars
+    this.raceIndex = 0; // race step: which checkpoint Rio is chasing
     this.failReason = '';
     this.doneName = '';
     this.scene = game.scene;
@@ -107,6 +149,7 @@ export class MissionManager {
       const step = this.currentStep;
       let t = step.text;
       if (step.type === 'timed' || step.type === 'evade') t += '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
+      if (step.type === 'race') t += '  CHECKPOINT ' + (this.raceIndex + 1) + '/' + step.checkpoints.length + '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
       if (step.type === 'evade' && this.caughtTimer > 0) t += '  - SHAKE HIM!';
       if (step.type === 'eliminate') t += '  (' + this.kills + '/' + step.count + ')';
       return 'MISSION ' + (this.active + 1) + ' - ' + this.meta.name + ': ' + t;
@@ -139,6 +182,25 @@ export class MissionManager {
     if (!step) { this.complete(); return; }
     if (step.wanted) this.game.setWanted(step.wanted);
     if (step.type === 'timed') this.timer = step.seconds;
+    if (step.type === 'race') {
+      // The race: a mission Furia on the start line (so a player who
+      // walked here can race too) and two rival Ventos ahead of it, all
+      // facing south down the x=-180 road toward the first checkpoint.
+      this.timer = step.seconds;
+      this.raceIndex = 0;
+      this.racers = [];
+      this.targetCar = this.game.spawnCar('furia', 0xf2c230, step.startX, step.startZ, Math.PI);
+      this.targetCar.kind = 'mission';
+      // Two rival Ventos ahead of the start line, derived from the step's
+      // own start point so the race survives a start-line move.
+      for (const s of [{ x: step.startX, z: step.startZ - 10 }, { x: step.startX, z: step.startZ - 25 }]) {
+        const r = this.game.spawnCar('vento', 0x8e2f32, s.x, s.z, Math.PI);
+        r.kind = 'race';
+        r.raceIndex = 0;
+        this.racers.push(r);
+      }
+      this.placeMarker(step.checkpoints[0].x, step.checkpoints[0].z);
+    }
     if (step.type === 'evade') {
       // Vex's tail: a Vento that chases Rio for the whole step. It starts
       // on a ring 38m out, so Rio always gets a head start — the step is
@@ -223,7 +285,10 @@ export class MissionManager {
 
   complete() {
     this.clearMarker();
-    this.state = 'done';
+    // The finale: the story is over, so the objective line falls through
+    // to the idle branch ("Story complete") instead of sitting on
+    // "Mission complete" forever — there is no next mission to start.
+    this.state = this.active + 1 >= MISSIONS.length ? 'idle' : 'done';
     // Capture the name first: active is cleared below, and the 'done'
     // objective line reads it every frame — reading this.meta after
     // clearing active would be null.name and crash the game loop.
@@ -255,6 +320,8 @@ export class MissionManager {
   cleanupEntities() {
     if (this.rival) { this.game.removeCar(this.rival); this.rival = null; }
     if (this.tail) { this.game.removeCar(this.tail); this.tail = null; }
+    for (const r of this.racers) this.game.removeCar(r);
+    this.racers = [];
     for (const g of this.guards) this.game.peds.remove(g);
     this.guards = [];
     this.targetCar = null;
@@ -277,6 +344,20 @@ export class MissionManager {
       this.game.notify('Vex\u2019s Vento is burning. Nice work.');
       this.nextStep();
     }
+  }
+
+  // A rival drives at a checkpoint like a police unit drives at Rio:
+  // steer at the target, ease off the throttle for sharp turns so the
+  // car actually makes the corner instead of sliding past the checkpoint
+  // and looping back. Rivals run a steady 20 m/s — fast enough to win
+  // if Rio dawdles, slow enough to beat in a Furia.
+  raceDrive(car, target, dt) {
+    const dx = target.x - car.pos.x, dz = target.z - car.pos.z;
+    const targetHeading = Math.atan2(dx, dz);
+    const turn = angleDiff(car.heading, targetHeading);
+    const steer = clamp(-turn * 1.6, -1, 1);
+    const throttle = Math.abs(turn) > 0.6 ? 0.3 : (car.speed < 20 ? 0.85 : 0.2);
+    car.drive(dt, throttle, steer, this.game.world.colliders);
   }
 
   update(dt) {
@@ -351,6 +432,32 @@ export class MissionManager {
       else if (this.rival) {
         // Rival runs: traffic-style driving, faster than normal.
         this.game.trafficLikeDrive(this.rival, dt, 16);
+      }
+    } else if (step.type === 'race') {
+      this.timer -= dt;
+      if (this.timer <= 0) { this.fail('Out of time - the Grand Prix is over'); return; }
+      const cp = step.checkpoints[this.raceIndex];
+      if (cp && dist2(p.x, p.z, cp.x, cp.z) < 8) {
+        this.raceIndex++;
+        g.audio.blip(1320, 0.12, 0.2);
+        if (this.raceIndex >= step.checkpoints.length) { this.nextStep(); return; }
+        this.clearMarker();
+        const next = step.checkpoints[this.raceIndex];
+        this.placeMarker(next.x, next.z);
+        g.notify('Checkpoint ' + this.raceIndex + '/' + step.checkpoints.length);
+      }
+      // The rivals chase the same checkpoints. A rival that finishes
+      // first wins the race — and Rio loses it.
+      for (const r of this.racers) {
+        if (r.dead) continue;
+        const target = step.checkpoints[r.raceIndex];
+        if (!target) continue;
+        if (dist2(r.pos.x, r.pos.z, target.x, target.z) < 8) {
+          r.raceIndex++;
+          if (r.raceIndex >= step.checkpoints.length) { this.fail('Vex\u2019s crew beat you to the line'); return; }
+          continue;
+        }
+        this.raceDrive(r, target, dt);
       }
     }
   }
