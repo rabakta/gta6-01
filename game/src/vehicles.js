@@ -1,12 +1,16 @@
-// BRISA BAY — cars: the player's ride, city traffic and the BCPD.
-// Arcade handling (no physics engine): each car is a heading + speed on the
-// road grid, with circle-vs-box building collision and circle-vs-circle
+// BRISA BAY v2 — cars: the player's ride, city traffic and the BCPD.
+// Arcade handling (no physics engine): each car is a heading + speed on
+// the road grid, with circle-vs-box building collision and circle-vs-circle
 // car collision. Traffic follows the road lines; police pursue the player
-// and the helicopter orbits from three stars up.
+// and the helicopter orbits from three stars up. v2 adds glossy paint
+// (Phong bodies that catch the sunset), working brake lights, garage
+// upgrades that change the car's real performance and silhouette, and
+// police roadblocks at four and five stars.
 import * as THREE from 'three';
-import { CAR_DEFS } from './config.js';
+import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT } from './config.js';
 import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
 import { nearestRoadCoord, resolveCircleCollisions } from './city.js';
+import { barrierTexture } from './textures.js';
 
 const CAR_COLORS = { police: 0x1d2733 };
 
@@ -17,9 +21,11 @@ const CAR_COLORS = { police: 0x1d2733 };
 export function makeCarMesh(defKey, colorHex) {
   const def = CAR_DEFS[defKey];
   const g = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: colorHex });
+  // v2: Phong paint — a specular highlight so the sunset glints off the
+  // body instead of the flat Lambert grey of v1.
+  const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 70, specular: 0x555555 });
   const darkMat = new THREE.MeshLambertMaterial({ color: 0x16181d });
-  const glassMat = new THREE.MeshLambertMaterial({ color: 0x9fc4d8 });
+  const glassMat = new THREE.MeshPhongMaterial({ color: 0x9fc4d8, shininess: 120, specular: 0x888888 });
   const isTruck = defKey === 'caminar';
   const isVan = defKey === 'carguero';
   const longBody = isTruck || isVan;
@@ -41,32 +47,51 @@ export function makeCarMesh(defKey, colorHex) {
     cargo.castShadow = true;
     g.add(cargo);
   }
-  // Wheels.
+  // Wheels — kept in userData so Sport Tyres can widen them visibly.
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 10);
   const wheelMat = new THREE.MeshLambertMaterial({ color: 0x0c0d10 });
   const wheelZ = longBody ? [-1.7, 1.7] : [-1.45, 1.45];
+  const wheels = [];
   for (const z of wheelZ) {
     for (const x of [-0.95, 0.95]) {
       const w = new THREE.Mesh(wheelGeo, wheelMat);
       w.rotation.z = Math.PI / 2;
       w.position.set(x, 0.36, z);
       g.add(w);
+      wheels.push(w);
     }
   }
+  g.userData.wheels = wheels;
+  // v2: armour plating — a steel roof plate, hidden until the upgrade is
+  // bought. Engine tune gets a glowing exhaust tip at the rear.
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 2.2), new THREE.MeshLambertMaterial({ color: 0x4a4f55 }));
+  plate.position.set(0, 1.42, -0.15);
+  plate.visible = false;
+  g.add(plate);
+  g.userData.armorPlate = plate;
+  const exhaustMat = new THREE.MeshBasicMaterial({ color: 0xff7a2a });
+  const exhaust = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.3), exhaustMat);
+  exhaust.position.set(0.55, 0.42, -bodyLen / 2 - 0.1);
+  exhaust.visible = false;
+  g.add(exhaust);
+  g.userData.exhaustTip = exhaust;
   // Headlights on the nose (+Z, the direction of travel) and taillights
   // on the rear (-Z). The first build had these swapped — white lights
   // shining out of the boot.
   const headMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
-  const tailMat = new THREE.MeshBasicMaterial({ color: 0xd21f2b });
+  const tailMats = [];
   const lightZ = longBody ? 2.72 : 2.22;
   for (const x of [-0.6, 0.6]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat);
     h.position.set(x, 0.6, lightZ);
     g.add(h);
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tailMat);
+    const tm = new THREE.MeshBasicMaterial({ color: 0x8a1616 });
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), tm);
     t.position.set(x, 0.6, -lightZ);
     g.add(t);
+    tailMats.push(tm);
   }
+  g.userData.tailMats = tailMats;
   if (defKey === 'police') {
     // Light bar: blue left, red right. The manager flashes them by
     // swapping the two materials' colours each half-second; the meshes are
@@ -99,33 +124,74 @@ export class Car {
     this.heading = heading;
     this.speed = 0;
     this.steer = 0;
+    this.maxHealth = 100;
     this.health = 100;
     this.smoking = false;
     this.dead = false;
     this.kind = 'traffic';
     this.driver = null; // 'player' when the player sits in it
     this.ai = null; // traffic / police brain state
+    // Effective performance: the base def plus garage upgrades. Traffic
+    // never buys upgrades, so these start identical to the def.
+    this.upgrades = { armor: 0, engine: 0, tires: 0 };
+    this.eff = {
+      topSpeed: this.def.topSpeed,
+      accel: this.def.accel,
+      brake: this.def.brake,
+      handling: this.def.handling,
+    };
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = heading;
   }
 
   get length() { return this.mesh.userData.length; }
 
+  // Apply garage upgrades: recompute effective performance and show the
+  // visible parts (roof plate, wide wheels, exhaust glow). `u` is the
+  // save's { armor, engine, tires } level map, each 0..2.
+  applyUpgrades(u) {
+    this.upgrades = { armor: u.armor || 0, engine: u.engine || 0, tires: u.tires || 0 };
+    this.eff.topSpeed = this.def.topSpeed + UPGRADES.engine.topSpeedBonus * this.upgrades.engine;
+    this.eff.accel = this.def.accel + UPGRADES.engine.accelBonus * this.upgrades.engine;
+    this.eff.brake = this.def.brake;
+    this.eff.handling = clamp(this.def.handling + UPGRADES.tires.handlingBonus * this.upgrades.tires, 0, 1);
+    const newMax = 100 + UPGRADES.armor.healthBonus * this.upgrades.armor;
+    const ratio = this.maxHealth > 0 ? this.health / this.maxHealth : 1;
+    this.maxHealth = newMax;
+    this.health = Math.round(newMax * ratio);
+    this.smoking = this.health <= this.maxHealth * 0.3;
+    const ud = this.mesh.userData;
+    if (ud.armorPlate) ud.armorPlate.visible = this.upgrades.armor > 0;
+    if (ud.exhaustTip) ud.exhaustTip.visible = this.upgrades.engine > 0;
+    if (ud.wheels) {
+      const wide = this.upgrades.tires > 0 ? 1.35 : 1;
+      for (const w of ud.wheels) w.scale.x = wide;
+    }
+  }
+
+  // Brake lights: bright red while braking, dim red otherwise.
+  brakeLight(on) {
+    const mats = this.mesh.userData.tailMats;
+    if (!mats) return;
+    for (const m of mats) m.color.setHex(on ? 0xff2a2a : 0x8a1616);
+  }
+
   // Arcade step: throttle -1..1, steer -1..1. Collides with buildings.
   drive(dt, throttle, steerInput, colliders) {
-    const def = this.def;
-    const target = throttle * (throttle >= 0 ? def.topSpeed : def.topSpeed * 0.32);
-    const rate = throttle >= 0 ? def.accel : def.brake;
+    const eff = this.eff;
+    const target = throttle * (throttle >= 0 ? eff.topSpeed : eff.topSpeed * 0.32);
+    const rate = throttle >= 0 ? eff.accel : eff.brake;
     if (throttle !== 0) {
       this.speed += clamp(target - this.speed, -rate * dt, rate * dt);
     } else {
       this.speed = Math.abs(this.speed) < 0.2 ? 0 : this.speed - Math.sign(this.speed) * 8 * dt;
     }
-    const speedNorm = clamp(Math.abs(this.speed) / def.topSpeed, 0, 1);
+    const speedNorm = clamp(Math.abs(this.speed) / eff.topSpeed, 0, 1);
     this.steer = steerInput * (0.55 + 0.45 * (1 - speedNorm));
     // Heading decreases when steering right (D): forward is (sin h, cos h),
     // so turning right from south swings the nose toward the west.
-    const turn = this.steer * (1.9 - speedNorm * 0.9) * Math.sign(this.speed || 1) * dt;
+    // Handling scales the turn rate: grippier cars turn sharper.
+    const turn = this.steer * (1.9 - speedNorm * 0.9) * (0.8 + eff.handling * 0.4) * Math.sign(this.speed || 1) * dt;
     this.heading -= turn;
     this.pos.x += Math.sin(this.heading) * this.speed * dt;
     this.pos.z += Math.cos(this.heading) * this.speed * dt;
@@ -147,9 +213,14 @@ export class Car {
 
   damage(amount) {
     this.health -= amount;
-    if (this.health <= 30 && !this.smoking) this.smoking = true;
+    if (this.health <= this.maxHealth * 0.3 && !this.smoking) this.smoking = true;
     if (this.health <= 0 && !this.dead) { this.dead = true; return true; }
     return false;
+  }
+
+  repair() {
+    this.health = this.maxHealth;
+    this.smoking = false;
   }
 }
 
@@ -244,6 +315,11 @@ export class PoliceManager {
     this.heliLight = null;
     this.spawnTimer = 0;
     this.flashPhase = 0;
+    // Roadblocks: parked units + a striped barrier, set across the road
+    // ahead of the player at four stars and up. Kept separate from
+    // this.cars so they never chase and never count toward the wanted cap.
+    this.blockers = [];
+    this.barrierMat = new THREE.MeshLambertMaterial({ map: barrierTexture() });
   }
 
   wantedToCount(wanted) {
@@ -261,8 +337,90 @@ export class PoliceManager {
     return car;
   }
 
-  update(dt, wanted, playerPos, playerInCar, allCars) {
+  // All cars parked at roadblocks, for collision and minimap.
+  blockerCars() {
+    const out = [];
+    for (const b of this.blockers) out.push(...b.cars);
+    return out;
+  }
+
+  // One roadblock across the road ahead of the player: a striped barrier
+  // plus two parked interceptors flanking it. `dist` is how far ahead.
+  spawnRoadblock(playerPos, playerHeading, dist = 45) {
+    const fx = Math.sin(playerHeading), fz = Math.cos(playerHeading);
+    let ax = playerPos.x + fx * dist;
+    let az = playerPos.z + fz * dist;
+    // Snap the block to the nearest intersection on the road ahead.
+    if (Math.abs(fx) > Math.abs(fz)) az = nearestRoadCoord(az);
+    else ax = nearestRoadCoord(ax);
+    ax = clamp(ax, -195, 195);
+    az = clamp(az, -195, 195);
+    // Don't stack two blocks on the same spot.
+    for (const b of this.blockers) {
+      if (dist2(ax, az, b.x, b.z) < 40) return null;
+    }
+    const group = new THREE.Group();
+    const barrier = new THREE.Mesh(new THREE.BoxGeometry(12, 1.2, 0.5), this.barrierMat);
+    barrier.position.y = 0.9;
+    barrier.castShadow = true;
+    group.add(barrier);
+    const legGeo = new THREE.BoxGeometry(0.4, 0.9, 0.8);
+    const legMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
+    for (const lx of [-5, 5]) {
+      const leg = new THREE.Mesh(legGeo, legMat);
+      leg.position.set(lx, 0.45, 0);
+      group.add(leg);
+    }
+    group.position.set(ax, 0, az);
+    group.rotation.y = playerHeading;
+    this.scene.add(group);
+    // Two parked interceptors, nose across the road, one on each side.
+    const perpX = Math.cos(playerHeading), perpZ = -Math.sin(playerHeading);
+    const cars = [];
+    for (const s of [-4.6, 4.6]) {
+      const car = new Car('police', CAR_COLORS.police, ax + perpX * s, az + perpZ * s, playerHeading + Math.PI / 2);
+      car.kind = 'police';
+      car.ai = { blocker: true };
+      this.scene.add(car.mesh);
+      cars.push(car);
+    }
+    // The barrier itself blocks cars and the player on foot.
+    const alongX = Math.abs(fx) > Math.abs(fz);
+    const collider = alongX
+      ? { minX: ax - 1, maxX: ax + 1, minZ: az - 6.5, maxZ: az + 6.5 }
+      : { minX: ax - 6.5, maxX: ax + 6.5, minZ: az - 1, maxZ: az + 1 };
+    this.world.colliders.push(collider);
+    const block = { x: ax, z: az, heading: playerHeading, group, cars, collider };
+    this.blockers.push(block);
+    return block;
+  }
+
+  clearRoadblocks() {
+    for (const b of this.blockers) {
+      this.scene.remove(b.group);
+      for (const car of b.cars) this.scene.remove(car.mesh);
+      const i = this.world.colliders.indexOf(b.collider);
+      if (i >= 0) this.world.colliders.splice(i, 1);
+    }
+    this.blockers = [];
+  }
+
+  ensureRoadblocks(wanted, playerPos, playerHeading) {
+    if (wanted >= ROADBLOCK_MIN_WANTED) {
+      if (this.blockers.length < ROADBLOCK_COUNT) {
+        // First block 45m ahead, the second 100m ahead — far enough apart
+        // that the proximity check inside spawnRoadblock never refuses it.
+        this.spawnRoadblock(playerPos, playerHeading, this.blockers.length === 0 ? 45 : 100);
+      }
+    } else if (this.blockers.length > 0) {
+      this.clearRoadblocks();
+    }
+  }
+
+  update(dt, wanted, playerPos, playerInCar, allCars, playerHeading = 0) {
     const want = this.wantedToCount(wanted);
+    // Roadblocks come first: they are not counted in `want`.
+    this.ensureRoadblocks(wanted, playerPos, playerHeading);
     // Spawn / despawn to match the wanted level (one new unit per 2.5s).
     this.spawnTimer -= dt;
     if (this.cars.length < want && this.spawnTimer <= 0) {
@@ -292,7 +450,8 @@ export class PoliceManager {
     // Flash the light bars: blue and red alternate every half second.
     this.flashPhase += dt;
     const blueOn = Math.floor(this.flashPhase * 2) % 2 === 0;
-    for (const car of this.cars) {
+    const flashCars = [...this.cars, ...this.blockerCars()];
+    for (const car of flashCars) {
       const mats = car.mesh.userData.lightMats;
       if (!mats) continue;
       mats[0].color.setHex(blueOn ? 0x2b6fd6 : 0x0a2a55);
@@ -352,7 +511,7 @@ export class PoliceManager {
 
   nearestPoliceDist(playerPos) {
     let best = Infinity;
-    for (const c of this.cars) {
+    for (const c of [...this.cars, ...this.blockerCars()]) {
       if (c.dead) continue;
       best = Math.min(best, dist2(c.pos.x, c.pos.z, playerPos.x, playerPos.z));
     }

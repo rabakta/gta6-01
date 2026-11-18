@@ -1,5 +1,7 @@
-// BRISA BAY — combat: fists, guns, muzzle flashes, tracers, explosions and
-// the particle system that sells all of them (skid smoke, sparks, fire).
+// BRISA BAY v2 — combat: fists, guns, muzzle flashes, tracers, explosions
+// and the particle system that sells all of them (skid smoke, sparks,
+// fire). v2 adds explosion debris — heavy chunks that arc and fall — and a
+// puff of muzzle smoke with every shot, so gunfire reads in daylight.
 import * as THREE from 'three';
 import { WEAPONS } from './config.js';
 
@@ -8,7 +10,9 @@ import { WEAPONS } from './config.js';
 // a velocity, a colour and a remaining life.
 // ---------------------------------------------------------------------------
 export class ParticleSystem {
-  constructor(scene, max = 900) {
+  constructor(scene, max = 1200) {
+    // v2 raises the cap from 900: exhaust, dust, flame and debris all draw
+    // from this one cloud, and a chase can fire several at once.
     this.max = max;
     this.positions = new Float32Array(max * 3);
     this.colors = new Float32Array(max * 3);
@@ -73,6 +77,32 @@ export class ParticleSystem {
         pos.x + (Math.random() - 0.5), pos.y + 0.4, pos.z + (Math.random() - 0.5),
         (Math.random() - 0.5) * 0.5, 1.2 + Math.random(), (Math.random() - 0.5) * 0.5,
         1.6, 0.35, 0.33, 0.32,
+      );
+    }
+  }
+
+  // v2: heavy debris — dark chunks that arc up and fall fast, for wrecks
+  // and explosions. Same cloud, different recipe: high launch, short life.
+  debris(pos, count = 18) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 3 + Math.random() * 6;
+      this.spawn(
+        pos.x, pos.y + 0.5, pos.z,
+        Math.sin(a) * s, 5 + Math.random() * 5, Math.cos(a) * s,
+        0.9 + Math.random() * 0.7,
+        0.16, 0.14, 0.13,
+      );
+    }
+  }
+
+  // v2: orange exhaust flame for a tuned engine under full throttle.
+  flame(pos, count = 2) {
+    for (let i = 0; i < count; i++) {
+      this.spawn(
+        pos.x + (Math.random() - 0.5) * 0.3, pos.y + 0.35, pos.z + (Math.random() - 0.5) * 0.3,
+        (Math.random() - 0.5) * 0.8, 0.5 + Math.random(), (Math.random() - 0.5) * 0.8,
+        0.28, 1.0, 0.48, 0.16,
       );
     }
   }
@@ -169,6 +199,8 @@ export class Combat {
     }
     this.flash.position.set(origin.x + dir.x * 1.2, 1.4, origin.z + dir.z * 1.2);
     this.flash.intensity = 60;
+    // v2: a puff of muzzle smoke, so a shot leaves a mark in the air.
+    this.particles.smoke({ x: origin.x + dir.x * 1.2, y: 1.35, z: origin.z + dir.z * 1.2 }, 1);
     if (audio) audio.gunshot();
     return hitReport;
   }
@@ -176,6 +208,8 @@ export class Combat {
   explode(pos, radius, targets, audio) {
     this.particles.burst(pos, 60, new THREE.Color(0xff7a1a), 9, 0.9, 4);
     this.particles.burst(pos, 30, new THREE.Color(0x3a3a3a), 4, 1.6, 3);
+    // v2: heavy debris arcs out of the blast.
+    this.particles.debris(pos, 18);
     this.flash.position.set(pos.x, pos.y + 1, pos.z);
     this.flash.intensity = 400;
     if (audio) audio.explosion();

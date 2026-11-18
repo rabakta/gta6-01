@@ -1,9 +1,11 @@
-// BRISA BAY — the story: eight chapters of Rio Marin's return to Brisa Bay.
-// A mission is a list of steps; the manager runs them in order, plants a
-// beacon on the current objective, and pays out when the last step clears.
+// BRISA BAY v2 — the story: ten chapters of Rio Marin's return to Brisa
+// Bay. A mission is a list of steps; the manager runs them in order, plants
+// a beacon on the current objective, and pays out when the last step clears.
+// v2 adds two chapters: a timed delivery (Sunset Run) and an escape from
+// Vex's tail (Lose the Tail), which introduces the new `evade` step type.
 import * as THREE from 'three';
 import { MISSION_META } from './config.js';
-import { dist2, mulberry32, randomPointInCircle } from './utils.js';
+import { dist2, mulberry32, randomPointInCircle, angleDiff, clamp } from './utils.js';
 
 const MISSIONS = [
   {
@@ -56,6 +58,19 @@ const MISSIONS = [
       { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Five stars. Get home, Rio.', wanted: 5 },
     ],
   },
+  {
+    steps: [
+      { type: 'goto', x: 180, z: -150, radius: 8, text: 'Pick up the sunset parcel at the docks' },
+      { type: 'collect', x: 180, z: -150, radius: 4, text: 'Grab the parcel' },
+      { type: 'timed', x: -180, z: -180, radius: 12, seconds: 75, text: 'Deliver it to the airfield in 75 seconds', wanted: 2 },
+    ],
+  },
+  {
+    steps: [
+      { type: 'evade', seconds: 60, text: 'Lose the tail - keep Vex off you for 60 seconds' },
+      { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Get home to the safehouse' },
+    ],
+  },
 ];
 
 export class MissionManager {
@@ -67,11 +82,13 @@ export class MissionManager {
     this.stepIndex = 0;
     this.state = 'idle'; // idle | active | done | failed
     this.timer = 0;
+    this.caughtTimer = 0; // evade: how long the tail has sat on Rio
     this.kills = 0;
     this.beacon = null;
     this.marker = null;
     this.packageMesh = null;
     this.rival = null;
+    this.tail = null; // evade step: Vex's chasing Vento
     this.guards = [];
     this.targetCar = null;
     this.failReason = '';
@@ -89,7 +106,8 @@ export class MissionManager {
     if (this.state === 'active' && this.currentStep) {
       const step = this.currentStep;
       let t = step.text;
-      if (step.type === 'timed') t += '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
+      if (step.type === 'timed' || step.type === 'evade') t += '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
+      if (step.type === 'evade' && this.caughtTimer > 0) t += '  - SHAKE HIM!';
       if (step.type === 'eliminate') t += '  (' + this.kills + '/' + step.count + ')';
       return 'MISSION ' + (this.active + 1) + ' - ' + this.meta.name + ': ' + t;
     }
@@ -107,6 +125,7 @@ export class MissionManager {
     this.stepIndex = 0;
     this.state = 'active';
     this.timer = 0;
+    this.caughtTimer = 0;
     this.kills = 0;
     this.beginStep();
     this.game.audio.jingle();
@@ -120,6 +139,20 @@ export class MissionManager {
     if (!step) { this.complete(); return; }
     if (step.wanted) this.game.setWanted(step.wanted);
     if (step.type === 'timed') this.timer = step.seconds;
+    if (step.type === 'evade') {
+      // Vex's tail: a Vento that chases Rio for the whole step. It starts
+      // on a ring 38m out, so Rio always gets a head start — the step is
+      // won by driving, not by spawning luck.
+      this.timer = step.seconds;
+      this.caughtTimer = 0;
+      const g = this.game;
+      const a = Math.random() * Math.PI * 2;
+      const spot = { x: g.player.pos.x + Math.sin(a) * 38, z: g.player.pos.z + Math.cos(a) * 38 };
+      this.tail = g.spawnCar('vento', 0x8e2f32, spot.x, spot.z, 0);
+      this.tail.kind = 'tail';
+      this.tail.ai = { axis: 'x', dir: 1, targetSpeed: 17, wait: 0 };
+      g.notify('Vex is on your tail - do not let him touch you!');
+    }
     if (step.type === 'eliminate') {
       this.kills = 0;
       this.guards = this.game.peds.spawnGuards(step.spawn, 60);
@@ -221,6 +254,7 @@ export class MissionManager {
 
   cleanupEntities() {
     if (this.rival) { this.game.removeCar(this.rival); this.rival = null; }
+    if (this.tail) { this.game.removeCar(this.tail); this.tail = null; }
     for (const g of this.guards) this.game.peds.remove(g);
     this.guards = [];
     this.targetCar = null;
@@ -266,6 +300,37 @@ export class MissionManager {
       // The first build only counted the timer down — reaching the bridge
       // never completed the step, so the mission could never be won.
       if (dist2(p.x, p.z, step.x, step.z) < step.radius) { this.nextStep(); return; }
+    }
+    if (step.type === 'evade') {
+      this.timer -= dt;
+      if (this.timer <= 0) { this.nextStep(); return; }
+      if (this.tail) {
+        if (this.tail.dead) {
+          // Ramming the tail off the road counts as losing it.
+          this.game.notify('Tail\'s gone. Nice driving.');
+          this.nextStep();
+          return;
+        }
+        // The tail pursues Rio directly — steering at him like a police
+        // unit, not cruising the grid like traffic. It closes fast from
+        // range, then creeps in close so it can actually stay on him.
+        const dx = p.x - this.tail.pos.x, dz = p.z - this.tail.pos.z;
+        const d = Math.hypot(dx, dz) || 1;
+        // A tail arriving at 30 m/s would blow straight past Rio and out
+        // of the 6m catch radius in one frame, so it never actually
+        // catches him. Inside 8m it sheds speed first and pulls alongside.
+        if (d < 8 && this.tail.speed > 6) this.tail.speed = 6;
+        const targetHeading = Math.atan2(dx, dz);
+        const steer = clamp(-angleDiff(this.tail.heading, targetHeading) * 1.6, -1, 1);
+        const throttle = d > 10 ? 1 : (d > 6 ? 0.5 : 0.15);
+        this.tail.drive(dt, throttle, steer, g.world.colliders);
+        if (d < 6) {
+          this.caughtTimer += dt;
+          if (this.caughtTimer > 1.5) { this.fail('Vex caught up with you'); return; }
+        } else {
+          this.caughtTimer = Math.max(0, this.caughtTimer - dt * 2);
+        }
+      }
     }
     if (step.type === 'goto' || step.type === 'driveTo') {
       if (dist2(p.x, p.z, step.x, step.z) < step.radius) this.nextStep();

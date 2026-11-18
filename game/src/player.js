@@ -1,6 +1,8 @@
-// BRISA BAY — Rio on foot: third-person movement, camera rig, entering cars.
-// The camera orbits with the mouse (drag) and settles behind Rio when he runs;
-// driving adds a walk bob on foot and a speed FOV kick in a car.
+// BRISA BAY v2 — Rio on foot: third-person movement, camera rig, entering
+// cars. The camera orbits with the mouse (drag) and settles behind Rio when
+// he runs; driving adds a walk bob on foot and a speed FOV kick in a car.
+// v2: the FOV kick reads the car's effective top speed, so an engine-tuned
+// ride still rushes the world at the right moment.
 import * as THREE from 'three';
 import { clamp, damp, angleLerp, lerp } from './utils.js';
 import { resolveCircleCollisions } from './city.js';
@@ -96,9 +98,9 @@ export class Player {
     camera.position.set(cx, cy, cz);
     camera.lookAt(target.x, target.y + 1.6, target.z);
     // FOV kick at speed: the world rushes a little when the car is flat out.
-    const speedNorm = this.inCar
-      ? clamp(Math.abs(this.inCar.speed) / this.inCar.def.topSpeed, 0, 1)
-      : 0;
+    // v2 reads the effective top speed, so a tuned engine still kicks.
+    const topSpeed = this.inCar ? (this.inCar.eff ? this.inCar.eff.topSpeed : this.inCar.def.topSpeed) : 0;
+    const speedNorm = this.inCar ? clamp(Math.abs(this.inCar.speed) / topSpeed, 0, 1) : 0;
     const wantFov = CAMERA_FOV + speedNorm * 9;
     if (Math.abs(camera.fov - wantFov) > 0.1) {
       camera.fov = lerp(camera.fov, wantFov, dt * 4);

@@ -1,14 +1,15 @@
-// BRISA BAY — the entrypoint make.fun runs (Node 22, standard library only).
-// It hands the game in: copy game/ and screenshots/ from beside this file
-// into /output and write /output/dossier.json, the summary the judge reads,
-// with the vendored make.fun library. The game itself is plain static files
-// a desktop browser loads offline — no build step, no network request.
+// BRISA BAY v2 — the entrypoint make.fun runs (Node 22, standard library
+// only). It hands the game in: copy game/ and screenshots/ from beside this
+// file into /output and write /output/dossier.json, the summary the judge
+// reads, with the vendored make.fun library. The game itself is plain
+// static files a desktop browser loads offline — no build step, no network
+// request.
 //
 // Run it locally the same way the grader does, with MAKEFUN_OUTPUT_DIR in
 // place of /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -32,6 +33,10 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
 // Fail loudly instead of handing in an empty game.
 if (!existsSync(join(root, 'game'))) throw new Error('game/ missing beside main.ts');
+
+// Fail loudly instead of handing in more screenshots than the scorer takes.
+const shots = existsSync(join(root, 'screenshots')) ? readdirSync(join(root, 'screenshots')) : [];
+if (shots.length > GATE.screenshots.max) throw new Error(`too many screenshots: ${shots.length} (max ${GATE.screenshots.max})`);
 
 mkdirSync(out, { recursive: true });
 cpSync(join(root, 'game'), join(out, 'game'), { recursive: true });

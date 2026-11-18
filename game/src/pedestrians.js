@@ -1,8 +1,9 @@
-// BRISA BAY — pedestrians: beach-goers and city walkers, plus the armed
+// BRISA BAY v2 — pedestrians: beach-goers and city walkers, plus the armed
 // guards missions spawn. A ped is a low-poly figure (torso, head, legs)
 // that strolls the sidewalks; danger nearby (a speeding car, gunfire, an
 // explosion) makes it flee, and a fleeing ped spreads the panic to the
-// walkers around it.
+// walkers around it. v2: corpses far from the player clear first, so the
+// streets stay tidy where Rio actually is.
 import * as THREE from 'three';
 import { clamp, mulberry32, pick, dist2 } from './utils.js';
 import { resolveCircleCollisions } from './city.js';
@@ -113,9 +114,18 @@ export class PedManager {
   }
 
   // Scatter peds on the sidewalks (9m off a road line) around a centre.
+  // v2: when the centre is on the beach, scatter walkers on the sand
+  // instead — the umbrellas and the pier need people too.
   spawn(count, center, radius) {
     const lines = this.world.roads;
+    const onBeach = center.x > 205;
     for (let i = 0; i < count; i++) {
+      if (onBeach) {
+        const x = 214 + Math.random() * 30;
+        const z = center.z + (Math.random() * 2 - 1) * radius;
+        this.peds.push(new Ped(this.scene, x, z));
+        continue;
+      }
       const line = pick(mulberry32(i * 977 + 13), lines);
       const along = (Math.random() * 2 - 1) * radius + center.z;
       const onXRoad = Math.random() < 0.5;
@@ -136,7 +146,7 @@ export class PedManager {
     return guards;
   }
 
-  update(dt, danger) {
+  update(dt, danger, playerPos = null) {
     for (const p of this.peds) p.update(dt, this.world, danger);
     // Panic chain: a fleeing ped spooks every walker within 6m, so the
     // crowd bolts together instead of strolling through a shootout.
@@ -152,10 +162,13 @@ export class PedManager {
       }
     }
     // Corpses clear themselves after 25s so the streets don't pile up.
+    // v2: a corpse far from the player clears first — no reason to keep a
+    // body three blocks away while the street Rio stands on fills up.
     for (const p of [...this.peds]) {
       if (p.dead) {
         p.deadTimer += dt;
-        if (p.deadTimer > 25) this.remove(p);
+        const far = playerPos ? dist2(p.pos.x, p.pos.z, playerPos.x, playerPos.z) > 120 : false;
+        if (p.deadTimer > 25 || (far && p.deadTimer > 8)) this.remove(p);
       }
     }
     // Prune the long-dead far from the player to keep the scene light.

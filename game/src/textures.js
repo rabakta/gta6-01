@@ -1,6 +1,8 @@
-// BRISA BAY — procedural textures. Every surface is painted on a canvas
-// at load time, so the game ships no image files and loads nothing over
-// the network. Seeded canvases keep the city identical on every run.
+// BRISA BAY v2 — procedural textures. Every surface is painted on a canvas
+// at load time, so the game ships no image files and loads nothing over the
+// network. Seeded canvases keep the city identical on every run. v2 adds a
+// glow sprite for lamps and pickups, neon shop signs, and the striped
+// roadblock barrier face.
 import * as THREE from 'three';
 import { makeCanvas, mulberry32, pick } from './utils.js';
 
@@ -126,6 +128,7 @@ export function signTexture(text, bg, fg) {
   g.fillText(text, 256, 68);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }
 
@@ -172,5 +175,74 @@ export function roofTexture(base) {
   g.fillRect(0, 0, 64, 64);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// ---------------------------------------------------------------------------
+// v2 additions.
+// ---------------------------------------------------------------------------
+
+// Glow sprite: a soft radial blob, used for street lamps, pickup halos,
+// the sun disc glow and the lighthouse lamp. One texture, many sprites.
+export function glowTexture() {
+  const c = makeCanvas(64, 64);
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// Neon sign: dark plate, glowing tube lettering with a halo. Used for the
+// shop fronts and the two neon billboards by the casino and the marina.
+export function neonSignTexture(lines, color = '#ff4fd8', bg = '#12081a') {
+  const c = makeCanvas(512, 128);
+  const g = c.getContext('2d');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 512, 128);
+  g.strokeStyle = color;
+  g.lineWidth = 3;
+  g.globalAlpha = 0.5;
+  g.strokeRect(10, 10, 492, 108);
+  g.globalAlpha = 1;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.shadowColor = color;
+  g.shadowBlur = 18;
+  g.fillStyle = color;
+  const n = lines.length;
+  lines.forEach((line, i) => {
+    g.font = `bold ${i === 0 ? 44 : 28}px Arial, sans-serif`;
+    g.fillText(line, 256, 64 + (i - (n - 1) / 2) * 38);
+  });
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// Striped red/white barricade face for the police roadblocks.
+export function barrierTexture() {
+  const c = makeCanvas(128, 32);
+  const g = c.getContext('2d');
+  g.fillStyle = '#e8e2d0';
+  g.fillRect(0, 0, 128, 32);
+  g.fillStyle = '#c22e2e';
+  for (let x = -32; x < 128; x += 32) {
+    g.beginPath();
+    g.moveTo(x, 32); g.lineTo(x + 16, 0); g.lineTo(x + 32, 0); g.lineTo(x + 16, 32);
+    g.closePath();
+    g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
   return tex;
 }

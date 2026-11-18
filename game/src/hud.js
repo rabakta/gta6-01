@@ -1,10 +1,12 @@
-// BRISA BAY — HUD: DOM readouts (cash, health, stars, weapon, speed, radio,
-// objective, toasts, menus) and the 2D minimap canvas with live blips for
-// the player, traffic, police, the helicopter and the mission marker.
+// BRISA BAY v2 — HUD: DOM readouts (cash, health, stars, weapon, speed,
+// radio, objective, toasts, menus) and the 2D minimap canvas with live
+// blips for the player, traffic, police, the helicopter, the mission
+// marker, world pickups and police roadblocks. v2 also shows the garage
+// upgrade levels under the vitals, so a tuned ride is always visible.
 import { CITY, WANTED_MAX } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
 
-const HUD_IDS = ['cash', 'health-fill', 'health-num', 'armor', 'stars', 'weapon', 'ammo', 'speed', 'radio', 'objective', 'toast', 'clock', 'menu', 'menu-title', 'menu-body', 'menu-hint', 'shop', 'shop-title', 'shop-items', 'damage'];
+const HUD_IDS = ['cash', 'health-fill', 'health-num', 'armor', 'mods', 'stars', 'weapon', 'ammo', 'speed', 'radio', 'objective', 'toast', 'clock', 'menu', 'menu-title', 'menu-body', 'menu-hint', 'shop', 'shop-title', 'shop-items', 'damage'];
 
 export class HUD {
   constructor(world) {
@@ -47,11 +49,18 @@ export class HUD {
   update(dt, state) {
     // state: { cash, health, armor, wanted, weaponName, ammo, speedKmh,
     //   radio, objective, clockSec, player, cars, police, heliPos,
-    //   markerPos, shops }
+    //   markerPos, shops, pickups, roadblocks, mods }
     this.el.cash.textContent = fmtMoney(state.cash);
     this.el['health-fill'].style.width = Math.max(0, state.health) + '%';
     this.el['health-num'].textContent = Math.max(0, Math.round(state.health));
     this.el.armor.textContent = state.armor > 0 ? 'ARMOR ' + Math.round(state.armor) : '';
+    // Garage mods: short tags, only when something is fitted.
+    const mods = state.mods || { armor: 0, engine: 0, tires: 0 };
+    const tags = [];
+    if (mods.armor > 0) tags.push('ARMOUR ' + mods.armor);
+    if (mods.engine > 0) tags.push('ENGINE ' + mods.engine);
+    if (mods.tires > 0) tags.push('TYRES ' + mods.tires);
+    this.el.mods.textContent = tags.length > 0 ? 'MODS: ' + tags.join(' · ') : '';
     const stars = '★'.repeat(state.wanted) + '☆'.repeat(WANTED_MAX - state.wanted);
     this.el.stars.textContent = stars;
     // At three stars and up the heat pulses red — the player feels it.
@@ -60,7 +69,8 @@ export class HUD {
     this.el.stars.style.opacity = hot ? String(0.65 + 0.35 * Math.sin(performance.now() / 160)) : '1';
     this.el.weapon.textContent = state.weaponName;
     this.el.ammo.textContent = state.ammo === Infinity ? '∞' : String(state.ammo);
-    this.el.speed.textContent = Math.round(state.speedKmh) + ' km/h';
+    this.el.speed.textContent = Math.round(state.speedKmh) + ' km/h' +
+      (state.carHealth != null ? '  ·  CAR ' + Math.max(0, Math.round(state.carHealth)) : '');
     this.el.radio.textContent = '♪ ' + state.radio;
     this.el.objective.textContent = state.objective;
     this.el.clock.textContent = fmtTime(state.clockSec);
@@ -113,6 +123,29 @@ export class HUD {
     const [hx, hz] = toMap(sh.x, sh.z);
     ctx.fillStyle = '#ffd34d';
     ctx.beginPath(); ctx.arc(hx, hz, 5, 0, Math.PI * 2); ctx.fill();
+    // v2: world pickups — green crosses for health, blue diamonds for armour.
+    for (const p of state.pickups || []) {
+      const [x, z] = toMap(p.x, p.z);
+      ctx.fillStyle = p.kind === 'health' ? '#2fd47a' : '#4da3ff';
+      if (p.kind === 'health') {
+        ctx.fillRect(x - 1, z - 4, 2, 8);
+        ctx.fillRect(x - 4, z - 1, 8, 2);
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(x, z - 4); ctx.lineTo(x + 4, z); ctx.lineTo(x, z + 4); ctx.lineTo(x - 4, z);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    // v2: police roadblocks — red bars across the road.
+    ctx.fillStyle = '#ff5a4d';
+    for (const b of state.roadblocks || []) {
+      const [x, z] = toMap(b.x, b.z);
+      ctx.save();
+      ctx.translate(x, z);
+      ctx.rotate(b.heading);
+      ctx.fillRect(-6, -1.5, 12, 3);
+      ctx.restore();
+    }
     // Objective marker (pulsing gold ring).
     if (state.markerPos) {
       const [mx, mz] = toMap(state.markerPos.x, state.markerPos.z);

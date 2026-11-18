@@ -1,6 +1,7 @@
-// BRISA BAY — tuning tables and content data for the whole game.
+// BRISA BAY v2 — tuning tables and content data for the whole game.
 // Every number the game balances on lives here, so a tune is one edit and
-// no system hides a magic number of its own.
+// no system hides a magic number of its own. v2 adds the garage upgrade
+// ladder, world pickups, a fourth radio station and two new missions.
 
 // ---------------------------------------------------------------------------
 // The city: a square grid of blocks. Roads run on the grid lines; the beach
@@ -16,19 +17,20 @@ export const CITY = {
   seaEnd: 620,
 };
 
-// Sunset palette: warm sky, low sun, long shadows.
+// Sunset palette: warm sky, low sun, long shadows. v2 warms the sun further
+// and deepens the sea so the golden hour reads on every screenshot.
 export const PALETTE = {
-  skyTop: 0x2e5f8a,
-  skyHorizon: 0xffb36b,
+  skyTop: 0x2a4f7e,
+  skyHorizon: 0xff9a4d,
   sun: 0xffd9a0,
-  sunIntensity: 2.4,
+  sunIntensity: 2.6,
   hemiSky: 0x9db8d6,
   hemiGround: 0x5a4a38,
-  fog: 0xe8a06a,
+  fog: 0xe8965f,
   asphalt: 0x2b2e33,
   pavement: 0x8f8578,
   sand: 0xd9b380,
-  sea: 0x1e6f8e,
+  sea: 0x14607f,
 };
 
 // Camera + world clock tuning, so feel changes land in one place.
@@ -37,13 +39,15 @@ export const CLOCK_RATE = 12; // game seconds per real second (a game minute eve
 export const WANTED_MAX = 5;
 export const HELI_MIN_WANTED = 3; // stars before the BCPD helicopter lifts off
 export const WANTED_DECAY_SECONDS = 14; // out of sight this long loses a star
+export const ROADBLOCK_MIN_WANTED = 4; // stars before the BCPD sets roadblocks
+export const ROADBLOCK_COUNT = 2; // how many blocks go up at once
 
 // How crowded the streets stay around the player.
 export const POPULATION = { traffic: 10, peds: 16 };
 
 export const SAVE_KEY = 'brisabay-save-v1';
 
-// Paint jobs the SPRAY & GO shop can roll for a respray.
+// Paint jobs the GARAGE shop can roll for a respray.
 export const RESPRAY_COLORS = [0xc94f43, 0x4a6fa5, 0xf2c230, 0x5a7d5a, 0xd21f2b];
 
 // ---------------------------------------------------------------------------
@@ -60,6 +64,42 @@ export const CAR_DEFS = {
 };
 
 // ---------------------------------------------------------------------------
+// Garage upgrades. Each has two paid levels; `levels` are the prices.
+// The bonuses stack per level and apply to whatever Rio is driving.
+// ---------------------------------------------------------------------------
+export const UPGRADES = {
+  armor: {
+    name: 'Armour Plating', levels: [400, 800],
+    desc: '+60 car health per level, steel roof plate',
+    healthBonus: 60,
+  },
+  engine: {
+    name: 'Engine Tune', levels: [600, 1200],
+    desc: '+4 top speed, +3 launch per level, hotter exhaust',
+    topSpeedBonus: 4, accelBonus: 3,
+  },
+  tires: {
+    name: 'Sport Tyres', levels: [350, 700],
+    desc: '+0.12 grip per level, wider wheels, sharper turns',
+    handlingBonus: 0.12,
+  },
+};
+export const UPGRADE_MAX_LEVEL = 2;
+
+// ---------------------------------------------------------------------------
+// World pickups: glowing crosses and shields at fixed spots. `respawn` is
+// the seconds before a taken pickup comes back.
+// ---------------------------------------------------------------------------
+export const PICKUPS = [
+  { kind: 'health', x: -120, z: 70,  respawn: 45 },
+  { kind: 'armor',  x: 180,  z: -140, respawn: 45 },
+  { kind: 'health', x: 228,  z: 40,  respawn: 45 },
+  { kind: 'armor',  x: -150, z: 140, respawn: 45 },
+];
+export const PICKUP_HEALTH = 40;
+export const PICKUP_ARMOR = 50;
+
+// ---------------------------------------------------------------------------
 // Weapons. `rate` is seconds between shots, `spread` in radians.
 // ---------------------------------------------------------------------------
 export const WEAPONS = {
@@ -73,23 +113,26 @@ export const WEAPONS = {
 // Shops on the map corners. `kind` picks the stock list in main.js.
 // ---------------------------------------------------------------------------
 export const SHOPS = [
-  { kind: 'guns',  name: 'IRONWORKS',  pos: [-150, -60],  blurb: 'Guns, ammo, armour' },
-  { kind: 'paint', name: 'SPRAY & GO', pos: [150, -150],  blurb: 'Respray $150 - Repair $200' },
-  { kind: 'food',  name: 'TACO SOL',   pos: [-60, 150],   blurb: 'Hot food restores health' },
+  { kind: 'guns',   name: 'IRONWORKS',  pos: [-150, -60],  blurb: 'Guns, ammo, armour' },
+  { kind: 'garage', name: 'GARAGE 24',  pos: [150, -150],  blurb: 'Upgrades - Respray - Repair' },
+  { kind: 'food',   name: 'TACO SOL',   pos: [-60, 150],   blurb: 'Hot food restores health' },
 ];
 
 // ---------------------------------------------------------------------------
 // Radio: tiny step sequencers. `root` is a MIDI note, `scale` semitone steps.
+// v2 adds a fourth station, SOL MAR 101, so R cycles through four moods.
 // ---------------------------------------------------------------------------
 export const RADIO_STATIONS = [
-  { name: 'SOL 98.5',   desc: 'Latin groove', bpm: 96,  root: 57, scale: [0, 2, 3, 7, 10], bass: [0, 0, 3, 5] },
-  { name: 'NEON DRIVE', desc: 'Synthwave',   bpm: 112, root: 45, scale: [0, 2, 3, 7, 8],  bass: [0, 0, 8, 7] },
-  { name: 'PALM FM',    desc: 'Lo-fi beach', bpm: 76,  root: 52, scale: [0, 3, 5, 7, 10], bass: [0, 5, 3, 7] },
+  { name: 'SOL 98.5',    desc: 'Latin groove', bpm: 96,  root: 57, scale: [0, 2, 3, 7, 10], bass: [0, 0, 3, 5] },
+  { name: 'NEON DRIVE',  desc: 'Synthwave',   bpm: 112, root: 45, scale: [0, 2, 3, 7, 8],  bass: [0, 0, 8, 7] },
+  { name: 'PALM FM',     desc: 'Lo-fi beach', bpm: 76,  root: 52, scale: [0, 3, 5, 7, 10], bass: [0, 5, 3, 7] },
+  { name: 'SOL MAR 101', desc: 'Island reggae', bpm: 88, root: 50, scale: [0, 2, 5, 7, 10], bass: [0, 0, 5, 3] },
 ];
 
 // ---------------------------------------------------------------------------
 // Story. Full step scripts live in missions.js; this table is the chapter
-// select the start screen and the HUD read from.
+// select the start screen and the HUD read from. v2 adds two chapters:
+// a timed delivery and an escape from Vex's tail.
 // ---------------------------------------------------------------------------
 export const MISSION_META = [
   { name: 'Homecoming',    reward: 300,  brief: 'Rio Marin is back in Brisa Bay. Get wheels and reach the safehouse.' },
@@ -100,6 +143,8 @@ export const MISSION_META = [
   { name: 'The Getaway',   reward: 1800, brief: 'Three stars and a bridge to cross. Ninety seconds. Do not stop.' },
   { name: 'Harbor Lights', reward: 2200, brief: 'Drive the Caminar truck through two roadblocks to the airfield.' },
   { name: 'The Last Job',  reward: 5000, brief: 'The Solmar Casino vault. Five stars on the way out. Get home, Rio.' },
+  { name: 'Sunset Run',    reward: 2600, brief: 'A parcel at the docks, an airfield deadline. Seventy-five seconds, two stars.' },
+  { name: 'Lose the Tail', reward: 3200, brief: 'Vex is on your tail. Sixty seconds - do not let him touch you.' },
 ];
 
 export const STORY_INTRO = [

@@ -1,7 +1,10 @@
-// BRISA BAY — boot, game loop and the glue between systems.
-// Rio Marin is back in Brisa Bay: drive, steal, run missions, dodge the BCPD.
+// BRISA BAY v2 — boot, game loop and the glue between systems.
+// Rio Marin is back in Brisa Bay: drive, steal, run missions, dodge the
+// BCPD. v2: filmic tone mapping for the sunset, garage upgrades, world
+// pickups, police roadblocks, exhaust and dust, brake lights, a fourth
+// radio station and two new missions.
 import * as THREE from 'three';
-import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS } from './config.js';
+import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
 import { buildCity, nearestRoadCoord } from './city.js';
 import { Car, TrafficManager, PoliceManager } from './vehicles.js';
@@ -9,6 +12,7 @@ import { Player } from './player.js';
 import { PedManager } from './pedestrians.js';
 import { Combat, ParticleSystem } from './combat.js';
 import { MissionManager } from './missions.js';
+import { PickupManager } from './pickups.js';
 import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
@@ -21,6 +25,11 @@ class Game {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // v2: filmic tone mapping + sRGB output, so the sunset grades like a
+    // photograph instead of clipping to white.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 2000);
 
@@ -29,6 +38,7 @@ class Game {
     this.audio = new AudioEngine();
     this.hud = new HUD(this.world);
     this.save = loadSave() || defaultSave();
+    if (!this.save.upgrades) this.save.upgrades = { armor: 0, engine: 0, tires: 0 };
 
     this.player = new Player(this.scene, -140, 140);
     this.player.health = 100;
@@ -38,6 +48,7 @@ class Game {
     this.peds = new PedManager(this.scene, this.world);
     this.combat = new Combat(this.scene, this.particles);
     this.missions = new MissionManager(this);
+    this.pickups = new PickupManager(this.scene, this.world);
 
     this.keys = {};
     this.state = 'menu'; // menu | playing | paused | wasted | busted | ending
@@ -54,6 +65,10 @@ class Game {
     this.lastX = 0;
     this.lastY = 0;
     this.shotMode = shotParam();
+    this.exhaustTimer = 0;
+    this.dustTimer = 0;
+    this.roadblockAlerted = false;
+    this.lastNearShop = null; // for the one-time "Press E" shop prompt
 
     this.traffic.spawn(14, { x: -140, z: 140 }, 150);
     this.peds.spawn(24, { x: -140, z: 140 }, 120);
@@ -81,10 +96,10 @@ class Game {
     const next = this.save.missionIndex < MISSION_META.length ? MISSION_META[this.save.missionIndex] : null;
     return (
       '<p class="story">' + STORY_INTRO.join('<br>') + '</p>' +
-      '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot<br>' +
+      '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car / shop &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot<br>' +
       'H horn &nbsp;·&nbsp; Q radio on/off &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M next mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; Mouse drag: camera</p>' +
       (next ? '<p class="next">Next mission: <b>' + next.name + '</b> — ' + next.brief + '</p>' : '<p class="next">Story complete. Free roam, Rio.</p>') +
-      '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of 8. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>'
+      '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of ' + MISSION_META.length + '. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>'
     );
   }
 
@@ -191,8 +206,9 @@ class Game {
     if (this.player.inCar === car) this.player.inCar = null;
   }
   allCars() {
-    const list = [...this.traffic.cars, ...this.police.cars];
+    const list = [...this.traffic.cars, ...this.police.cars, ...this.police.blockerCars()];
     if (this.missions.rival) list.push(this.missions.rival);
+    if (this.missions.tail) list.push(this.missions.tail);
     if (this.missions.targetCar) list.push(this.missions.targetCar);
     return list.filter((c) => !c.dead);
   }
@@ -209,6 +225,8 @@ class Game {
   enterCar(car) {
     this.player.inCar = car;
     car.driver = 'player';
+    // Whatever Rio drives gets his garage upgrades — armour, engine, tyres.
+    car.applyUpgrades(this.save.upgrades || { armor: 0, engine: 0, tires: 0 });
     this.player.mesh.visible = false;
     this.audio.blip(660, 0.1, 0.12);
   }
@@ -307,8 +325,10 @@ class Game {
         this.shopButton('shotgun', 'Boomstick - $1400', '6 shells, close range') +
         this.shopButton('ammo', 'Ammo refill - $50', 'Top up the current gun') +
         this.shopButton('armor', 'Body armor - $300', '+50 armor');
-    } else if (shop.kind === 'paint') {
-      html = this.shopButton('respray', 'Respray - $150', 'New paint, less heat') +
+    } else if (shop.kind === 'garage') {
+      // v2: the garage sells upgrades that change the car for real.
+      html = this.upgradeButton('armor') + this.upgradeButton('engine') + this.upgradeButton('tires') +
+        this.shopButton('respray', 'Respray - $150', 'New paint, less heat') +
         this.shopButton('repair', 'Repair - $200', 'Fix your ride up');
     } else {
       html = this.shopButton('taco', 'Taco - $20', '+25 health') +
@@ -318,6 +338,14 @@ class Game {
   }
   shopButton(id, label, desc) {
     return '<button data-buy="' + id + '"><b>' + label + '</b><span>' + desc + '</span></button>';
+  }
+  // One garage upgrade row: level owned, next price, or MAX.
+  upgradeButton(key) {
+    const u = UPGRADES[key];
+    const lvl = (this.save.upgrades && this.save.upgrades[key]) || 0;
+    if (lvl >= 2) return '<button data-buy="up-' + key + '" disabled><b>' + u.name + ' - MAX</b><span>' + u.desc + '</span></button>';
+    const price = u.levels[lvl];
+    return '<button data-buy="up-' + key + '"><b>' + u.name + ' Lv ' + (lvl + 1) + ' - $' + price + '</b><span>' + u.desc + '</span></button>';
   }
   closeShop() { this.shopOpen = false; this.hud.hideShop(); }
 
@@ -341,6 +369,18 @@ class Game {
       this.player.armor = Math.min(100, this.player.armor + 50);
       s.armor = this.player.armor;
       this.notify('Armor on. +50.');
+    } else if (id === 'up-armor' || id === 'up-engine' || id === 'up-tires') {
+      // v2: garage upgrades — pay, level up, fit to the current ride.
+      const key = id.slice(3);
+      const lvl = (s.upgrades && s.upgrades[key]) || 0;
+      if (lvl >= 2) { this.notify('Already at max level.'); return; }
+      const price = UPGRADES[key].levels[lvl];
+      if (!spend(price)) return;
+      if (!s.upgrades) s.upgrades = { armor: 0, engine: 0, tires: 0 };
+      s.upgrades[key] = lvl + 1;
+      if (this.player.inCar) this.player.inCar.applyUpgrades(s.upgrades);
+      this.audio.upgrade();
+      this.notify(UPGRADES[key].name + ' Lv ' + (lvl + 1) + ' fitted.');
     } else if (id === 'respray') {
       if (!this.player.inCar) { this.notify('Bring a car to respray.'); return; }
       if (!spend(150)) return;
@@ -354,8 +394,7 @@ class Game {
     } else if (id === 'repair') {
       if (!this.player.inCar) { this.notify('Bring a car to repair.'); return; }
       if (!spend(200)) return;
-      this.player.inCar.health = 100;
-      this.player.inCar.smoking = false;
+      this.player.inCar.repair();
       this.notify('Good as new.');
     } else if (id === 'taco') {
       if (!spend(20)) return;
@@ -420,7 +459,30 @@ class Game {
       car.drive(dt, fwd, strafe, this.world.colliders);
       p.pos.copy(car.pos);
       p.heading = car.heading;
-      this.audio.setEngine(clamp(Math.abs(car.speed) / car.def.topSpeed, 0, 1), true);
+      this.audio.setEngine(clamp(Math.abs(car.speed) / car.eff.topSpeed, 0, 1), true);
+      // Brake lights: S while rolling forward lights the tail.
+      car.brakeLight(fwd < 0 && car.speed > 0.5);
+      // Exhaust puffs at the tailpipe under throttle; a tuned engine
+      // throws orange flame instead of grey smoke.
+      const rearX = car.pos.x - Math.sin(car.heading) * (car.length / 2 + 0.3);
+      const rearZ = car.pos.z - Math.cos(car.heading) * (car.length / 2 + 0.3);
+      if (fwd > 0 && Math.abs(car.speed) > 8) {
+        this.exhaustTimer -= dt;
+        if (this.exhaustTimer <= 0) {
+          this.exhaustTimer = 0.12;
+          if (car.upgrades.engine > 0) this.particles.flame({ x: rearX, y: 0.5, z: rearZ }, 2);
+          else this.particles.smoke({ x: rearX, y: 0.5, z: rearZ }, 1);
+        }
+      }
+      // Dust kicked up by a hard turn at speed, with a tyre screech.
+      if (Math.abs(strafe) > 0.7 && Math.abs(car.speed) > 15) {
+        this.dustTimer -= dt;
+        if (this.dustTimer <= 0) {
+          this.dustTimer = 0.2;
+          this.particles.smoke({ x: rearX, y: 0.5, z: rearZ }, 1);
+          this.audio.skid();
+        }
+      }
       if (car.smoking) this.particles.smoke({ x: car.pos.x, y: 1.2, z: car.pos.z }, 1);
       // A wrecked ride blows up once. damage() already marks the car dead
       // the moment health hits zero, so the old `!car.dead` guard here
@@ -474,15 +536,25 @@ class Game {
       }
     }
 
-    // Traffic + police + peds + missions.
+    // Traffic + police + peds + missions + pickups.
     this.traffic.update(dt, p.pos, this.allCars());
-    this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars());
+    this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars(), p.heading);
     const danger = this.wanted > 0 ? { x: p.pos.x, z: p.pos.z, r: 25 } : null;
-    this.peds.update(dt, danger);
+    this.peds.update(dt, danger, p.pos);
     this.missions.update(dt);
+    this.pickups.update(dt, p.pos, this);
     this.combat.update(dt);
     this.particles.update(dt);
     this.audio.update();
+
+    // Roadblock alert: once, when the first block goes up.
+    if (this.police.blockers.length > 0 && !this.roadblockAlerted) {
+      this.roadblockAlerted = true;
+      this.audio.roadblock();
+      this.notify('Roadblock ahead - the BCPD is blocking the road!');
+    } else if (this.police.blockers.length === 0) {
+      this.roadblockAlerted = false;
+    }
 
     // Guards shoot back at Rio.
     for (const ped of this.peds.peds) {
@@ -515,13 +587,18 @@ class Game {
     }
     this.audio.setSiren(this.wanted > 0, this.police.nearestPoliceDist(p.pos));
 
-    // Shops: nearest one within reach shows its prompt.
+    // Shops: nearest one within reach shows its prompt — once per
+    // approach, so the toast doesn't spam while Rio stands there.
     this.nearShop = null;
     if (!p.inCar) {
       for (const s of this.world.shops) {
         if (dist2(p.pos.x, p.pos.z, s.x, s.z) < 7) { this.nearShop = s; break; }
       }
     }
+    if (this.nearShop && this.nearShop !== this.lastNearShop && !this.shopOpen) {
+      this.notify('Press E - ' + this.nearShop.name + ': ' + this.nearShop.blurb);
+    }
+    this.lastNearShop = this.nearShop;
 
     // Keep the city populated around the player.
     if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
@@ -539,6 +616,7 @@ class Game {
       weaponName: WEAPONS[this.save.currentWeapon || 'fists'].name,
       ammo: this.save.weapons[this.save.currentWeapon || 'fists']?.ammo ?? 0,
       speedKmh: p.inCar ? Math.abs(p.inCar.speed) * 3.6 : p.speed * 3.6,
+      carHealth: p.inCar ? p.inCar.health : null,
       radio: this.audio.stationName(),
       objective: this.missions.objectiveText(),
       clockSec: this.clockSec % 86400,
@@ -546,6 +624,9 @@ class Game {
       cars: this.allCars(),
       heliPos: this.police.heli ? { x: this.police.heli.position.x, z: this.police.heli.position.z } : null,
       markerPos: this.missions.markerPos || null,
+      pickups: this.pickups.activePickups(),
+      roadblocks: this.police.blockers.map((b) => ({ x: b.x, z: b.z, heading: b.heading })),
+      mods: this.save.upgrades || { armor: 0, engine: 0, tires: 0 },
     });
     if (this.elapsed % 30 < dt) this.writeSave();
   }
@@ -562,6 +643,8 @@ class Game {
       this.world.seaMaterial.uniforms.t.value = t;
       this.particles.update(dt);
     }
+    // The lighthouse beam sweeps the bay in every state.
+    if (this.world.lighthouseBeam) this.world.lighthouseBeam.rotation.y += dt * 0.5;
     if (this.warmupFrames > 0) this.warmupFrames--;
     this.renderer.render(this.scene, this.camera);
     if (!window.__BRISABAY_READY) {

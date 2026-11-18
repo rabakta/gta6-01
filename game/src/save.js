@@ -1,11 +1,12 @@
-// BRISA BAY — save / load. Progress lives in localStorage only; nothing
+// BRISA BAY v2 — save / load. Progress lives in localStorage only; nothing
 // is sent anywhere. A save holds cash, the story chapter, owned weapons and
-// ammo, owned cars and the player's best stats. Loads are sanitised: a save
-// from an older build, or one a player edited by hand, can never hand the
-// game a weapon it does not own or a chapter past the end of the story.
+// ammo, owned cars, garage upgrades and the player's best stats. Loads are
+// sanitised: a save from an older build, or one a player edited by hand,
+// can never hand the game a weapon it does not own, an upgrade level past
+// the cap, or a chapter past the end of the story.
 import { SAVE_KEY, MISSION_META, WEAPONS } from './config.js';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2; // v2: the save gains the upgrades field
 
 export function defaultSave() {
   return {
@@ -14,6 +15,8 @@ export function defaultSave() {
     weapons: { fists: { owned: true, ammo: Infinity } },
     currentWeapon: 'fists',
     armor: 0,
+    // Garage upgrades: each 0..2 (see UPGRADES in config.js).
+    upgrades: { armor: 0, engine: 0, tires: 0 },
     ownedCars: [],
     stats: {
       missionsDone: 0,
@@ -35,6 +38,13 @@ export function sanitizeSave(raw) {
     clean.missionIndex = Math.max(0, Math.min(MISSION_META.length, Math.floor(raw.missionIndex)));
   }
   if (Number.isFinite(raw.armor)) clean.armor = Math.max(0, Math.min(100, raw.armor));
+  if (typeof raw.upgrades === 'object' && raw.upgrades !== null) {
+    for (const key of ['armor', 'engine', 'tires']) {
+      if (Number.isFinite(raw.upgrades[key])) {
+        clean.upgrades[key] = Math.max(0, Math.min(2, Math.floor(raw.upgrades[key])));
+      }
+    }
+  }
   if (typeof raw.weapons === 'object' && raw.weapons !== null) {
     for (const [key, w] of Object.entries(raw.weapons)) {
       if (!WEAPONS[key] || typeof w !== 'object' || w === null) continue;
