@@ -1,8 +1,8 @@
-// BRISA BAY v4 — birds. Two flocks circle the lighthouse and the pier:
-// simple V-shaped gulls on slow orbits, wings flapping, far above the
-// traffic. Pure ambience — no collision, no AI, no save — but a sky with
-// birds in it reads as a living city at a glance, and the lighthouse
-// flock gives the north beach a reason to look up.
+// BRISA BAY — birds. Two flocks circle the lighthouse and the pier: simple
+// V-shaped gulls on slow orbits, wings flapping, far above the traffic.
+// Pure ambience — no collision, no AI, no save — but a sky with birds in
+// it reads as a living city at a glance, and the lighthouse flock gives
+// the north beach a reason to look up.
 import * as THREE from 'three';
 import { BIRD_FLOCKS } from './config.js';
 

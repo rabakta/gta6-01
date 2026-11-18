@@ -1,10 +1,9 @@
-// BRISA BAY v4 — HUD: DOM readouts (cash, health, stars, weapon, speed,
-// radio, objective, toasts, menus) and the 2D minimap canvas with live
-// blips for the player, traffic, police, the helicopter, the mission
-// marker, world pickups, police roadblocks and taxi fares. v3 adds the
-// amber fare blip (a $ in a gold circle). v4 adds cyan bus-stop squares.
-// v2 also shows the garage upgrade levels under the vitals, so a tuned
-// ride is always visible.
+// BRISA BAY — HUD: DOM readouts (cash, health, stars, weapon, speed, radio,
+// objective, toasts, menus) and the 2D minimap canvas with live blips for
+// the player, traffic, police, the helicopter, the mission marker, world
+// pickups, police roadblocks and taxi fares. The fare blip is amber ($ in
+// a gold circle); bus stops are cyan squares. Garage upgrade levels show
+// under the vitals, so a tuned ride is always visible.
 import { CITY, WANTED_MAX } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
 
@@ -125,13 +124,13 @@ export class HUD {
     const [hx, hz] = toMap(sh.x, sh.z);
     ctx.fillStyle = '#ffd34d';
     ctx.beginPath(); ctx.arc(hx, hz, 5, 0, Math.PI * 2); ctx.fill();
-    // v4: bus stops — cyan squares, so a rider can find the next stop.
+    // Bus stops — cyan squares, so a rider can find the next stop.
     ctx.fillStyle = '#4fd8ff';
     for (const s of this.world.busStops || []) {
       const [x, z] = toMap(s.x, s.z);
       ctx.fillRect(x - 3, z - 3, 6, 6);
     }
-    // v2: world pickups — green crosses for health, blue diamonds for armour.
+    // World pickups — green crosses for health, blue diamonds for armour.
     for (const p of state.pickups || []) {
       const [x, z] = toMap(p.x, p.z);
       ctx.fillStyle = p.kind === 'health' ? '#2fd47a' : '#4da3ff';
@@ -144,7 +143,7 @@ export class HUD {
         ctx.closePath(); ctx.fill();
       }
     }
-    // v2: police roadblocks — red bars across the road.
+    // Police roadblocks — red bars across the road.
     ctx.fillStyle = '#ff5a4d';
     for (const b of state.roadblocks || []) {
       const [x, z] = toMap(b.x, b.z);
@@ -171,7 +170,7 @@ export class HUD {
       ctx.fillStyle = c.kind === 'police' ? '#4da3ff' : 'rgba(200,200,200,0.8)';
       ctx.fillRect(x - 2, z - 2, 4, 4);
     }
-    // v3: taxi fare — an amber circle with a $ in it, at the passenger
+    // Taxi fare — an amber circle with a $ in it, at the passenger
     // while offered, at the destination while riding. Drawn after the
     // traffic so a car dot never hides it. Collectible packages are
     // deliberately NOT on the map: finding them is the game.

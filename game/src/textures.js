@@ -1,13 +1,14 @@
-// BRISA BAY v5 — procedural textures. Every surface is painted on a canvas
+// BRISA BAY — procedural textures. Every surface is painted on a canvas
 // at load time, so the game ships no image files and loads nothing over the
-// network. Seeded canvases keep the city identical on every run. v2 adds a
-// glow sprite for lamps and pickups, neon shop signs, and the striped
-// roadblock barrier face. v3 reuses the same glow sprite for the taxi
-// beacons and the collectible parcels. v5: facades are painted per storey
-// (floors/cols matched to the building, so tall towers stop stretching six
-// window rows), windows get a recessed frame, sill and painted balcony,
-// and every facade paints a second canvas — an emissive map — so its lit
-// windows actually glow at sunset instead of being yellow paint.
+// network. Seeded canvases keep the city identical on every run. A glow
+// sprite for lamps and pickups, neon shop signs, and the striped roadblock
+// barrier face. The taxi beacons and the collectible parcels reuse the same
+// glow sprite, so the new systems add no new texture code. Facades are
+// painted per storey (floors/cols matched to the building, so tall towers
+// stop stretching six window rows), windows get a recessed frame, sill
+// and painted balcony, and every facade paints a second canvas — an
+// emissive map — so its lit windows actually glow at sunset instead of
+// being yellow paint.
 import * as THREE from 'three';
 import { makeCanvas, mulberry32, pick } from './utils.js';
 
@@ -218,12 +219,12 @@ export function roofTexture(base) {
 }
 
 // ---------------------------------------------------------------------------
-// v2 additions.
+// Later additions.
 // ---------------------------------------------------------------------------
 
 // Glow sprite: a soft radial blob, used for street lamps, pickup halos,
 // the sun disc glow and the lighthouse lamp. One texture, many sprites.
-// v3 reuses it for the taxi beacons and the collectible parcels, so the
+// The taxi beacons and the collectible parcels reuse it, so the
 // new systems add no new texture code.
 export function glowTexture() {
   const c = makeCanvas(64, 64);
@@ -288,7 +289,7 @@ export function barrierTexture() {
 }
 
 // ---------------------------------------------------------------------------
-// v5 additions: the ground stops being one flat slab.
+// The ground stops being one flat slab.
 // ---------------------------------------------------------------------------
 
 // Zebra crossing: worn white bars on asphalt, one tile per intersection.

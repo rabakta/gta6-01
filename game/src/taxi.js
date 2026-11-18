@@ -1,4 +1,4 @@
-// BRISA BAY v3 — taxi fares. The repeatable side activity: while Rio is
+// BRISA BAY — taxi fares. The repeatable side activity: while Rio is
 // free-roaming, a passenger offer appears at a random intersection. Drive
 // up in a car and press E to pick them up, then deliver them to their
 // destination before the timer runs out for cash plus a tip for speed.

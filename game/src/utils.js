@@ -1,7 +1,7 @@
-// BRISA BAY v3 — shared math, random and formatting helpers.
-// Every system imports from here, so nothing here knows about the game
-// itself: pure functions only, no DOM, no three.js. v3 fixes a stale
-// comment: heading 0 faces +Z (forward is (sin h, cos h)), not -Z.
+// BRISA BAY — small shared helpers: seeded randomness, angles, clamps and
+// formatting. Nothing in here knows about the game itself, so every system
+// can import it without pulling in the world: pure functions only, no DOM,
+// no three.js. Headings are radians, 0 = +Z, forward = (sin h, cos h).
 
 import { CITY } from './config.js';
 
@@ -9,8 +9,8 @@ import { CITY } from './config.js';
 // Deterministic random
 // ---------------------------------------------------------------------------
 
-// mulberry32: a tiny seeded PRNG. Scenes staged from a seed (city layout,
-// screenshots) come out identical on every run.
+// mulberry32: a tiny seeded PRNG. Anything staged from a seed (city layout,
+// screenshots) comes out identical on every run.
 export function mulberry32(seed) {
   let a = seed >>> 0;
   return function next() {

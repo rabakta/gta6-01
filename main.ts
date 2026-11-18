@@ -1,17 +1,17 @@
-// BRISA BAY v5 — the entrypoint make.fun runs (Node 22, standard library
+// BRISA BAY — the entrypoint make.fun runs (Node 22, standard library
 // only). It hands the game in: copy game/ and screenshots/ from beside this
 // file into /output and write /output/dossier.json, the summary the judge
 // reads, with the vendored make.fun library. The game itself is plain
 // static files a desktop browser loads offline — no build step, no network
-// request. v3: twelve story missions, taxi fares, twenty collectible
-// packages, and the same gate limits as v2. v4: the livelier city — buses,
-// motorbikes, bus stops, vendor stalls, ped roles (joggers, groups,
-// waiters, vendors, a street performer) and birds. v5: the graphics
-// round — facades painted per storey with lit windows that glow,
-// parapets and varied roof colours, ground detail (crosswalks, plaza
-// tiles, kerbs, wet sand), neon halos and car headlight/taillight halos,
-// and a headlight pool on the road ahead of whatever Rio is driving.
-// No gameplay system changes in v5.
+// request. Twelve story missions, taxi fares, twenty collectible packages,
+// and the same gate limits as the earlier rounds. The livelier city —
+// buses, motorbikes, bus stops, vendor stalls, ped roles (joggers, groups,
+// waiters, vendors, a street performer) and birds. The graphics round —
+// facades painted per storey with lit windows that glow, parapets and
+// varied roof colours, ground detail (crosswalks, plaza tiles, kerbs, wet
+// sand), neon halos and car headlight/taillight halos, and a headlight pool
+// on the road ahead of whatever Rio is driving. No gameplay system changes
+// in the graphics round.
 //
 // Run it locally the same way the grader does, with MAKEFUN_OUTPUT_DIR in
 // place of /output:

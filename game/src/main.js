@@ -1,13 +1,13 @@
-// BRISA BAY v3 — boot, game loop and the glue between systems.
+// BRISA BAY — boot, game loop and the glue between systems.
 // Rio Marin is back in Brisa Bay: drive, steal, run missions, dodge the
-// BCPD. v3: two new story chapters (the Grand Prix race and the finale),
-// taxi fares and 20 collectible packages, and a fix for Mission 8, whose
-// casino steps could never be reached. v2: filmic tone mapping for the
-// sunset, garage upgrades, world pickups, police roadblocks, exhaust and
-// dust, brake lights, a fourth radio station and two new missions. v4:
-// the city gets busier — bikes and buses in traffic, bus stops with
-// boarding passengers, walking groups, joggers, vendors, a street
-// performer, birds, and parked cars Rio can steal. v5: the graphics
+// BCPD. Later rounds add two new story chapters (the Grand Prix race and
+// the finale), taxi fares and 20 collectible packages, and a fix for
+// Mission 8, whose casino steps could never be reached; filmic tone
+// mapping for the sunset, garage upgrades, world pickups, police
+// roadblocks, exhaust and dust, brake lights, a fourth radio station and
+// two new missions; the city gets busier — bikes and buses in traffic,
+// bus stops with boarding passengers, walking groups, joggers, vendors,
+// a street performer, birds, and parked cars Rio can steal. The graphics
 // round — emissive windows, ground detail and a headlight pool on the
 // road ahead of whatever Rio is driving; no gameplay system changes.
 import * as THREE from 'three';
@@ -36,7 +36,7 @@ class Game {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    // v2: filmic tone mapping + sRGB output, so the sunset grades like a
+    // Filmic tone mapping + sRGB output, so the sunset grades like a
     // photograph instead of clipping to white.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
@@ -61,14 +61,14 @@ class Game {
     this.combat = new Combat(this.scene, this.particles);
     this.missions = new MissionManager(this);
     this.pickups = new PickupManager(this.scene, this.world);
-    // v3: the side activities — taxi fares and collectible packages.
+    // The side activities — taxi fares and collectible packages.
     this.taxi = new TaxiManager(this);
     this.collectibles = new CollectibleManager(this.scene, this.save);
-    // v4: birds over the lighthouse and the pier, and the parked cars
+    // Birds over the lighthouse and the pier, and the parked cars
     // Rio can steal (see spawnParked).
     this.birds = new Birds(this.scene);
     this.parked = [];
-    // v5: the headlight pool — one soft pool of light on the road ahead
+    // The headlight pool — one soft pool of light on the road ahead
     // of whatever Rio is driving, repositioned every frame. One mesh,
     // shared by every car, so it costs nothing when Rio is on foot.
     this.headlightPool = new THREE.Group();
@@ -107,7 +107,7 @@ class Game {
     this.spawnCar('brisa', 0xc94f43, -120, 120, Math.PI / 2);
     this.spawnCar('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
     this.spawnCar('taxi', 0xf2a007, -160, 100, 0);
-    // v4: the city wakes up — waiters at two stops, a performer with a
+    // The city wakes up — waiters at two stops, a performer with a
     // crowd at the Plaza, vendors behind their stalls, parked rides Rio
     // can steal, and two walking groups near the start.
     for (const stop of this.world.busStops.slice(0, 2)) this.peds.spawnWaiters(stop, 2);
@@ -134,7 +134,7 @@ class Game {
   startMenuBody() {
     const hasSave = !!loadSave();
     const next = this.save.missionIndex < MISSION_META.length ? MISSION_META[this.save.missionIndex] : null;
-    // v3: the side-activity ledger — packages found, fares run, fare cash.
+    // The side-activity ledger — packages found, fares run, fare cash.
     const pkgs = this.save.packages ? this.save.packages.length : 0;
     const fares = (this.save.stats && this.save.stats.faresDone) || 0;
     const faresEarned = (this.save.stats && this.save.stats.faresEarned) || 0;
@@ -262,7 +262,7 @@ class Game {
     this.scene.add(car.mesh);
     return car;
   }
-  // v4: a parked car Rio can steal. Unlike the three decorative cars
+  // A parked car Rio can steal. Unlike the three decorative cars
   // near the start, parked cars join this.parked, so allCars() and
   // nearestCar() see them — E next to one steals it like any traffic car.
   spawnParked(defKey, color, x, z, heading) {
@@ -319,7 +319,7 @@ class Game {
   onInteract() {
     if (this.state !== 'playing') return;
     if (this.shopOpen) return;
-    // v3: a fare pickup beats exiting the car — pressing E next to a
+    // A fare pickup beats exiting the car — pressing E next to a
     // waiting passenger in a cab picks them up, it does not step out.
     if (this.taxi.tryPickup()) return;
     if (this.player.inCar) { this.exitCar(); return; }
@@ -401,7 +401,7 @@ class Game {
         this.shopButton('ammo', 'Ammo refill - $50', 'Top up the current gun') +
         this.shopButton('armor', 'Body armor - $300', '+50 armor');
     } else if (shop.kind === 'garage') {
-      // v2: the garage sells upgrades that change the car for real.
+      // The garage sells upgrades that change the car for real.
       html = this.upgradeButton('armor') + this.upgradeButton('engine') + this.upgradeButton('tires') +
         this.shopButton('respray', 'Respray - $150', 'New paint, less heat') +
         this.shopButton('repair', 'Repair - $200', 'Fix your ride up');
@@ -445,7 +445,7 @@ class Game {
       s.armor = this.player.armor;
       this.notify('Armor on. +50.');
     } else if (id === 'up-armor' || id === 'up-engine' || id === 'up-tires') {
-      // v2: garage upgrades — pay, level up, fit to the current ride.
+      // Garage upgrades — pay, level up, fit to the current ride.
       const key = id.slice(3);
       const lvl = (s.upgrades && s.upgrades[key]) || 0;
       if (lvl >= 2) { this.notify('Already at max level.'); return; }
@@ -577,7 +577,7 @@ class Game {
       this.audio.setEngine(0, false);
     }
 
-    // v5: the headlight pool follows the driven car, hidden on foot.
+    // The headlight pool follows the driven car, hidden on foot.
     // The group's -Z is the pool's long axis, so yaw + PI points it
     // forward along the car's heading.
     if (p.inCar) {
@@ -625,7 +625,7 @@ class Game {
 
     // Traffic + police + peds + missions + pickups + fares + packages.
     this.traffic.update(dt, p.pos, this.allCars());
-    // v4: a dwelling bus boards its waiters — once per stop, so the same
+    // A dwelling bus boards its waiters — once per stop, so the same
     // bus does not keep boarding an empty bench for four seconds.
     for (const d of this.traffic.dwelling) {
       const car = d.car;
@@ -702,13 +702,13 @@ class Game {
     // Keep the city populated around the player.
     if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
     if (this.peds.peds.filter((x) => !x.dead).length < 16) this.peds.spawn(6, p.pos, 100);
-    // v4: keep the bus stops staffed — when the waiters thin out, send
+    // Keep the bus stops staffed — when the waiters thin out, send
     // two more to a random stop. A stop with no waiters is just a bench.
     if (this.peds.waiters().length < 4) {
       const stop = this.world.busStops[Math.floor(Math.random() * this.world.busStops.length)];
       this.peds.spawnWaiters(stop, 2);
     }
-    // v4: a fresh walking group now and then, so the sidewalks are not
+    // A fresh walking group now and then, so the sidewalks are not
     // only lone walkers.
     if (this.peds.peds.filter((x) => !x.dead && x.role === 'group').length < 3 && Math.random() < dt * 0.1) {
       this.peds.spawnGroup(p.pos.x + 20, p.pos.z + 10, 3);

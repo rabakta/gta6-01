@@ -1,10 +1,10 @@
-// BRISA BAY v3 — save / load. Progress lives in localStorage only; nothing
-// is sent anywhere. A save holds cash, the story chapter, owned weapons and
-// ammo, owned cars, garage upgrades, the collectible packages found so far
-// and the player's best stats. Loads are sanitised: a save from an older
-// build, or one a player edited by hand, can never hand the game a weapon
-// it does not own, an upgrade level past the cap, a package id that does
-// not exist, or a chapter past the end of the story.
+// BRISA BAY — saving and loading. Progress lives in localStorage only and
+// is never sent anywhere. A save holds cash, the story chapter, owned
+// weapons and ammo, owned cars, garage upgrades, the collectible packages
+// found so far and the player's best stats. Loads are sanitised, so a save
+// from an older build — or one a player edited by hand — can never hand the
+// game a weapon it does not own, an upgrade level past the cap, a package id
+// that does not exist, or a chapter past the end of the story.
 import { SAVE_KEY, MISSION_META, WEAPONS, COLLECTIBLES } from './config.js';
 
 export const SAVE_VERSION = 3; // v3: the save gains the packages list and fare stats

@@ -1,8 +1,8 @@
-// BRISA BAY v3 — tuning tables and content data for the whole game.
+// BRISA BAY — tuning tables and content data for the whole game.
 // Every number the game balances on lives here, so a tune is one edit and
-// no system hides a magic number of its own. v3 adds two story chapters
-// (a checkpoint race and the finale), the taxi fare system and the 20
-// collectible packages. v4 adds motorbikes and city buses, bus stops,
+// no system hides a magic number of its own. Later rounds add two story
+// chapters (a checkpoint race and the finale), the taxi fare system and
+// the 20 collectible packages, then motorbikes and city buses, bus stops,
 // street vendors, parked cars Rio can steal, birds and a street
 // performer — the city gets busier.
 
@@ -20,13 +20,13 @@ export const CITY = {
   seaEnd: 620,
 };
 
-// Sunset palette: warm sky, low sun, long shadows. v2 warms the sun further
-// and deepens the sea so the golden hour reads on every screenshot.
+// Sunset palette: warm sky, low sun, long shadows. The sun warms further
+// and the sea deepens so the golden hour reads on every screenshot.
 export const PALETTE = {
   skyTop: 0x2a4f7e,
   skyHorizon: 0xff9a4d,
   sun: 0xffd9a0,
-  // v5: the sun is a touch hotter and the hemisphere a touch dimmer, so
+  // The sun is a touch hotter and the hemisphere a touch dimmer, so
   // the sunset shadows bite and the lit windows read.
   sunIntensity: 2.8,
   hemiSky: 0x9db8d6,
@@ -65,7 +65,7 @@ export const CAR_DEFS = {
   carguero: { name: 'Carguero', label: 'Carguero Van',   topSpeed: 22, accel: 10, brake: 26, handling: 0.4,  colors: [0xe8e2d0, 0x7a8894] },
   caminar:  { name: 'Caminar',  label: 'Caminar Truck',  topSpeed: 24, accel: 11, brake: 28, handling: 0.45, colors: [0x9c6b3c, 0x4a5d3a] },
   taxi:     { name: 'Taxi Sol', label: 'Taxi Sol',       topSpeed: 28, accel: 14, brake: 31, handling: 0.6,  colors: [0xf2a007] },
-  // v4: the city gets busier — a nimble bike and a slow city bus.
+  // The city gets busier — a nimble bike and a slow city bus.
   moto:     { name: 'Moto',    label: 'Moto 250',       topSpeed: 34, accel: 17, brake: 34, handling: 0.85, colors: [0xd21f2b, 0x2b3a55, 0xf2c230] },
   bus:      { name: 'Bus',     label: 'Sol Bus',        topSpeed: 18, accel: 8,  brake: 22, handling: 0.3,  colors: [0x2e7d6b, 0xd9a441, 0x4a6fa5] },
   police:   { name: 'Interceptor', label: 'BCPD Interceptor', topSpeed: 36, accel: 20, brake: 38, handling: 0.9, colors: [0x1d2733] },
@@ -128,7 +128,7 @@ export const SHOPS = [
 
 // ---------------------------------------------------------------------------
 // Radio: tiny step sequencers. `root` is a MIDI note, `scale` semitone steps.
-// v2 adds a fourth station, SOL MAR 101, so R cycles through four moods.
+// A fourth station, SOL MAR 101, so R cycles through four moods.
 // ---------------------------------------------------------------------------
 export const RADIO_STATIONS = [
   { name: 'SOL 98.5',    desc: 'Latin groove', bpm: 96,  root: 57, scale: [0, 2, 3, 7, 10], bass: [0, 0, 3, 5] },
@@ -139,8 +139,8 @@ export const RADIO_STATIONS = [
 
 // ---------------------------------------------------------------------------
 // Story. Full step scripts live in missions.js; this table is the chapter
-// select the start screen and the HUD read from. v3 adds two chapters:
-// the Grand Prix race and the finale at the ferry.
+// select the start screen and the HUD read from. Later rounds add two
+// chapters: the Grand Prix race and the finale at the ferry.
 // ---------------------------------------------------------------------------
 export const MISSION_META = [
   { name: 'Homecoming',    reward: 300,  brief: 'Rio Marin is back in Brisa Bay. Get wheels and reach the safehouse.' },
@@ -165,7 +165,7 @@ export const STORY_INTRO = [
 ];
 
 // ---------------------------------------------------------------------------
-// v3 additions.
+// Later additions.
 // ---------------------------------------------------------------------------
 
 // The Grand Prix route: a clockwise loop of the city on the outer ring
@@ -237,7 +237,7 @@ export const COLLECTIBLES = [
 ];
 
 // ---------------------------------------------------------------------------
-// v4 additions: the city gets busier.
+// The city gets busier.
 // ---------------------------------------------------------------------------
 
 // Bus stops: each sits on an intersection (both coordinates on road

@@ -1,7 +1,7 @@
-// BRISA BAY v3 — combat: fists, guns, muzzle flashes, tracers, explosions
-// and the particle system that sells all of them (skid smoke, sparks,
-// fire). v2 adds explosion debris — heavy chunks that arc and fall — and a
-// puff of muzzle smoke with every shot, so gunfire reads in daylight.
+// BRISA BAY — combat: fists, guns, muzzle flashes, tracers, explosions and
+// the particle system that sells all of them (skid smoke, sparks, fire).
+// Explosion debris — heavy chunks that arc and fall — and a puff of muzzle
+// smoke with every shot make gunfire read in daylight.
 import * as THREE from 'three';
 import { WEAPONS } from './config.js';
 
@@ -11,8 +11,8 @@ import { WEAPONS } from './config.js';
 // ---------------------------------------------------------------------------
 export class ParticleSystem {
   constructor(scene, max = 1200) {
-    // v2 raises the cap from 900: exhaust, dust, flame and debris all draw
-    // from this one cloud, and a chase can fire several at once.
+    // The cap covers exhaust, dust, flame and debris all drawing from this
+    // one cloud, and a chase can fire several at once.
     this.max = max;
     this.positions = new Float32Array(max * 3);
     this.colors = new Float32Array(max * 3);
@@ -81,7 +81,7 @@ export class ParticleSystem {
     }
   }
 
-  // v2: heavy debris — dark chunks that arc up and fall fast, for wrecks
+  // Heavy debris — dark chunks that arc up and fall fast, for wrecks
   // and explosions. Same cloud, different recipe: high launch, short life.
   debris(pos, count = 18) {
     for (let i = 0; i < count; i++) {
@@ -96,7 +96,7 @@ export class ParticleSystem {
     }
   }
 
-  // v2: orange exhaust flame for a tuned engine under full throttle.
+  // Orange exhaust flame for a tuned engine under full throttle.
   flame(pos, count = 2) {
     for (let i = 0; i < count; i++) {
       this.spawn(
@@ -202,7 +202,7 @@ export class Combat {
     }
     this.flash.position.set(origin.x + dir.x * 1.2, 1.4, origin.z + dir.z * 1.2);
     this.flash.intensity = 60;
-    // v2: a puff of muzzle smoke, so a shot leaves a mark in the air.
+    // A puff of muzzle smoke, so a shot leaves a mark in the air.
     this.particles.smoke({ x: origin.x + dir.x * 1.2, y: 1.35, z: origin.z + dir.z * 1.2 }, 1);
     if (audio) audio.gunshot();
     return hitReport;
@@ -211,7 +211,7 @@ export class Combat {
   explode(pos, radius, targets, audio) {
     this.particles.burst(pos, 60, new THREE.Color(0xff7a1a), 9, 0.9, 4);
     this.particles.burst(pos, 30, new THREE.Color(0x3a3a3a), 4, 1.6, 3);
-    // v2: heavy debris arcs out of the blast.
+    // Heavy debris arcs out of the blast.
     this.particles.debris(pos, 18);
     this.flash.position.set(pos.x, pos.y + 1, pos.z);
     this.flash.intensity = 400;

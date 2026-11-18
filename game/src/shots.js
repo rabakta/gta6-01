@@ -1,13 +1,11 @@
-// BRISA BAY v4 — screenshot staging. `?shot=menu|foot|chase|mission`
-// drops the game straight into a composed scene so a screenshot shows the
-// systems at their best, with no menu in the way. `?shot=garage` opens the
-// garage shop for a verification shot. v3 adds `?shot=race` (the Grand
-// Prix, the cover shot), `?shot=taxi` (a fare offer, passenger and amber
-// beacon in frame) and `?shot=packages` (Rio on foot beside a gold
-// collectible parcel). v4 adds `?shot=street` (the new cover: Rio on a
-// Moto weaving toward a dwelling bus, waiters on the bench, the city
-// busy around him). Used only for the entry's screenshots and for
-// testing the new systems.
+// BRISA BAY — screenshot staging. `?shot=menu|foot|chase|mission` drops the
+// game straight into a composed scene so a screenshot shows the systems at
+// their best, with no menu in the way. `?shot=garage` opens the garage shop
+// for a verification shot. The race shot is the Grand Prix cover, taxi
+// shows a fare offer with passenger and amber beacon in frame, packages
+// shows Rio on foot beside a gold collectible parcel, and street is the
+// busy-city cover: Rio on a Moto weaving toward a dwelling bus. Used only
+// for the entry's screenshots and for testing the new systems.
 export function shotParam() {
   const q = new URLSearchParams(location.search);
   return q.get('shot');
@@ -159,13 +157,13 @@ export function stageShot(game, shot) {
     g.openShop(shop);
     g.player.camDist = 9;
   } else if (shot === 'race') {
-    // v3 cover shot: the Midnight Grand Prix. Rio in a Furia on the
-    // start line at Coral Row (x=-180 road, facing south toward the
-    // first checkpoint), the race already running. The goto step
-    // completes on the first update frame — Rio is already on the line —
-    // and the race step spawns the mission Furia and the two rival
-    // Ventos ahead of him, with the gold checkpoint beacon 60m down the
-    // road. (Same ~0.15s rule as the chase shot: stage it, don't drive it.)
+    // The Midnight Grand Prix. Rio in a Furia on the start line at Coral
+    // Row (x=-180 road, facing south toward the first checkpoint), the
+    // race already running. The goto step completes on the first update
+    // frame — Rio is already on the line — and the race step spawns the
+    // mission Furia and the two rival Ventos ahead of him, with the gold
+    // checkpoint beacon 60m down the road. (Same ~0.15s rule as the chase
+    // shot: stage it, don't drive it.)
     const car = g.spawnCar('furia', 0xf2c230, -180, 120, Math.PI);
     g.enterCar(car);
     car.speed = 20;
@@ -190,7 +188,7 @@ export function stageShot(game, shot) {
     g.peds.spawn(6, { x: -180, z: 60 }, 70);
     g.player.camDist = 11;
   } else if (shot === 'taxi') {
-    // v3: a taxi fare offer. Rio in a Taxi Sol on the central east-west
+    // A taxi fare offer. Rio in a Taxi Sol on the central east-west
     // road (z=0), the passenger standing 30m ahead with the amber beacon
     // over them and the fare on the HUD objective line. The passenger
     // faces the car, so the shot reads as a pickup about to happen.
@@ -205,7 +203,7 @@ export function stageShot(game, shot) {
     g.peds.spawn(6, { x: 0, z: -30 }, 60);
     g.player.camDist = 10;
   } else if (shot === 'packages') {
-    // v3: Rio on foot at the Plaza, a gold collectible parcel glowing
+    // Rio on foot at the Plaza, a gold collectible parcel glowing
     // 10m ahead of him. The package bob and spin read in the frame, and
     // the objective line shows the package count once one is found.
     g.player.pos.set(0, 0, 20);
@@ -215,12 +213,11 @@ export function stageShot(game, shot) {
     g.peds.spawn(8, { x: 0, z: 30 }, 60);
     g.player.camDist = 8;
   } else if (shot === 'street') {
-    // v4 cover shot: the city at its busiest. Rio on a Moto 250 on the
-    // central east-west road (z=0), heading west toward a Sol Bus
-    // dwelling at the West Plaza stop with waiters on the bench, a second
-    // bike weaving in traffic, joggers and a walking group on the
-    // sidewalks. (Same ~0.15s rule as the chase shot: stage it, don't
-    // drive it.)
+    // The city at its busiest. Rio on a Moto 250 on the central
+    // east-west road (z=0), heading west toward a Sol Bus dwelling at
+    // the West Plaza stop with waiters on the bench, a second bike
+    // weaving in traffic, joggers and a walking group on the sidewalks.
+    // (Same ~0.15s rule as the chase shot: stage it, don't drive it.)
     const car = g.spawnCar('moto', 0xd21f2b, 0, 0, -Math.PI / 2);
     g.enterCar(car);
     car.speed = 16;

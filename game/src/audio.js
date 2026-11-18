@@ -1,11 +1,11 @@
-// BRISA BAY v3 — sound. Everything is synthesised with WebAudio: no audio
+// BRISA BAY — sound. Everything is synthesised with WebAudio: no audio
 // files, no network. Radio stations are tiny step sequencers (bass, lead,
 // snare, hats) over a chord root; SFX are filtered noise and oscillator
 // blips. The engine hum and the police siren are continuous loops whose
-// volume follows the game. v3: the taxi fares reuse the existing SFX —
-// blip for a pickup, jingle for a delivery, fail for a lost fare — so no
-// new sounds were needed. v2 adds a pickup chime, a garage upgrade sting
-// and a roadblock alert, and the radio now cycles four stations.
+// volume follows the game. The taxi fares reuse the existing SFX — blip for
+// a pickup, jingle for a delivery, fail for a lost fare — so no new sounds
+// were needed. The radio cycles four stations, and upgrades, roadblocks and
+// pickups each have their own sting.
 import { RADIO_STATIONS } from './config.js';
 
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
@@ -174,7 +174,7 @@ export class AudioEngine {
     [392, 330, 262].forEach((f, i) => this.tone(f, t0 + i * 0.14, 0.2, 'sawtooth', 0.12));
   }
 
-  // v2: a bright two-note chime when a health or armour pickup is taken.
+  // A bright two-note chime when a health or armour pickup is taken.
   pickup() {
     if (!this.started) return;
     const t0 = this.ctx.currentTime;
@@ -182,14 +182,14 @@ export class AudioEngine {
     this.tone(1319, t0 + 0.09, 0.14, 'sine', 0.18);
   }
 
-  // v2: a rising three-note sting when a garage upgrade is fitted.
+  // A rising three-note sting when a garage upgrade is fitted.
   upgrade() {
     if (!this.started) return;
     const t0 = this.ctx.currentTime;
     [440, 554, 659].forEach((f, i) => this.tone(f, t0 + i * 0.09, 0.16, 'triangle', 0.2));
   }
 
-  // v2: a low two-tone alert when the BCPD sets a roadblock ahead.
+  // A low two-tone alert when the BCPD sets a roadblock ahead.
   roadblock() {
     if (!this.started) return;
     const t0 = this.ctx.currentTime;
@@ -197,7 +197,7 @@ export class AudioEngine {
     this.tone(233, t0 + 0.2, 0.22, 'square', 0.12);
   }
 
-  // v2: a tyre screech for hard turns at speed (called with the dust).
+  // A tyre screech for hard turns at speed (called with the dust).
   skid() {
     if (!this.started) return;
     this.noise(this.ctx.currentTime, 0.18, 0.1, 2400);

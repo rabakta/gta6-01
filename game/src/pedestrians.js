@@ -1,9 +1,9 @@
-// BRISA BAY v4 — pedestrians: beach-goers and city walkers, plus the armed
+// BRISA BAY — pedestrians: beach-goers and city walkers, plus the armed
 // guards missions spawn. A ped is a low-poly figure (torso, head, legs)
 // that strolls the sidewalks; danger nearby (a speeding car, gunfire, an
 // explosion) makes it flee, and a fleeing ped spreads the panic to the
-// walkers around it. v2: corpses far from the player clear first, so the
-// streets stay tidy where Rio actually is. v4: the crowd gets jobs —
+// walkers around it. Corpses far from the player clear first, so the
+// streets stay tidy where Rio actually is. The crowd gets jobs —
 // joggers, walking groups, bus-stop waiters, vendors, a street performer
 // with a watching crowd, and beachgoers who stop to watch the sea.
 import * as THREE from 'three';
@@ -30,7 +30,7 @@ export class Ped {
     this.deadTimer = 0; // seconds since death; corpses are cleared by the manager
     this.phase = Math.random() * 6;
     this.shootTimer = 0;
-    // v4: group followers walk with their leader; watchers face their
+    // Group followers walk with their leader; watchers face their
     // performer; waiters remember which stop they wait at; beachgoers
     // sometimes just stand and watch the sea.
     this.groupLeader = opts.groupLeader || null;
@@ -54,7 +54,7 @@ export class Ped {
     const legR = legL.clone();
     legR.position.x = 0.14;
     this.mesh.add(body, head, legL, legR);
-    // v4: a hat on some heads — caps, a sun hat, a beanie — so the crowd
+    // A hat on some heads — caps, a sun hat, a beanie — so the crowd
     // reads as individuals at a glance, not a clone army.
     if (opts.hat !== false && rng() < 0.45) {
       const hatCols = [0xd21f2b, 0xf2c230, 0x2e7d6b, 0x2b3a55, 0xe8e2d0];
@@ -88,14 +88,14 @@ export class Ped {
       this.phase += dt * 2;
       this.pos.x += Math.sin(this.phase) * 0.15 * dt;
     } else if (this.role === 'waiter' || this.role === 'vendor' || this.role === 'performer') {
-      // v4: the rooted roles stand their ground — a waiter at the stop, a
+      // The rooted roles stand their ground — a waiter at the stop, a
       // vendor behind the stall, the performer holding court. A little
       // sway so they are alive, not statues.
       this.speed = 0;
       this.phase += dt * 1.5;
       this.pos.x += Math.sin(this.phase) * 0.08 * dt;
     } else if (this.role === 'watcher') {
-      // v4: the crowd around the performer faces them and sways to the
+      // The crowd around the performer faces them and sways to the
       // music nobody else can hear. If the performer is gone, they
       // wander off like anyone else.
       if (this.performer && !this.performer.dead) {
@@ -107,7 +107,7 @@ export class Ped {
         this.speed = this.walkSpeed;
       }
     } else if (this.role === 'group' && this.groupLeader && !this.groupLeader.dead) {
-      // v4: walk with the leader — same heading, same pace, a step behind
+      // Walk with the leader — same heading, same pace, a step behind
       // and to the side. The lerp pulls the follower into its slot; the
       // forward step below keeps pace with the leader.
       const l = this.groupLeader;
@@ -118,11 +118,11 @@ export class Ped {
       this.pos.x += (bx - this.pos.x) * Math.min(1, dt * 3);
       this.pos.z += (bz - this.pos.z) * Math.min(1, dt * 3);
     } else if (this.role === 'jogger') {
-      // v4: a jogger runs the sidewalks at twice a walk, turning less.
+      // A jogger runs the sidewalks at twice a walk, turning less.
       if (Math.random() < dt * 0.08) this.heading += (Math.random() - 0.5) * 1.0;
       this.speed = this.walkSpeed * 2.4;
     } else if (this.role === 'beachgoer') {
-      // v4: beachgoers amble, then stop and stare at the sea for a while.
+      // Beachgoers amble, then stop and stare at the sea for a while.
       if (this.pauseTimer > 0) {
         this.pauseTimer -= dt;
         this.speed = 0;
@@ -176,7 +176,7 @@ export class PedManager {
   }
 
   // Scatter peds on the sidewalks (9m off a road line) around a centre.
-  // v2: when the centre is on the beach, scatter walkers on the sand
+  // When the centre is on the beach, scatter walkers on the sand
   // instead — the umbrellas and the pier need people too.
   spawn(count, center, radius) {
     const lines = this.world.roads;
@@ -193,7 +193,7 @@ export class PedManager {
       const onXRoad = Math.random() < 0.5;
       const x = onXRoad ? line + 9 : along;
       const z = onXRoad ? along : line + 9;
-      // v4: about one walker in six is out for a run.
+      // About one walker in six is out for a run.
       const role = Math.random() < 0.16 ? 'jogger' : 'walker';
       this.peds.push(new Ped(this.scene, x, z, { role }));
     }
@@ -212,7 +212,7 @@ export class PedManager {
     return guards;
   }
 
-  // v4: a walking group — a leader plus followers a step behind. The
+  // A walking group — a leader plus followers a step behind. The
   // followers carry the leader, so the group holds together for as long
   // as the leader lives.
   spawnGroup(x, z, size = 3) {
@@ -228,7 +228,7 @@ export class PedManager {
     return group;
   }
 
-  // v4: waiters at a bus stop — they stand by the bench until a bus
+  // Waiters at a bus stop — they stand by the bench until a bus
   // dwells there, then board (see boardWaiters).
   spawnWaiters(stop, count = 2) {
     const out = [];
@@ -240,7 +240,7 @@ export class PedManager {
     return out;
   }
 
-  // v4: vendors behind their stalls, one ped per stall, facing the road.
+  // Vendors behind their stalls, one ped per stall, facing the road.
   spawnVendors(spots) {
     const out = [];
     for (const s of spots) {
@@ -253,7 +253,7 @@ export class PedManager {
     return out;
   }
 
-  // v4: the street performer and their crowd — the performer holds the
+  // The street performer and their crowd — the performer holds the
   // spot, four watchers ring them facing in.
   spawnPerformer(x, z) {
     const performer = new Ped(this.scene, x, z, { role: 'performer', shirt: 0xf2c230, hat: false });
@@ -268,7 +268,7 @@ export class PedManager {
     return { performer, watchers };
   }
 
-  // v4: board the waiters standing at a stop — the bus takes them.
+  // Board the waiters standing at a stop — the bus takes them.
   // Returns how many boarded. Only waiters for that stop board, never
   // passers-by: the role and the stop both have to match.
   boardWaiters(stop, radius = 9) {
@@ -303,7 +303,7 @@ export class PedManager {
       }
     }
     // Corpses clear themselves after 25s so the streets don't pile up.
-    // v2: a corpse far from the player clears first — no reason to keep a
+    // A corpse far from the player clears first — no reason to keep a
     // body three blocks away while the street Rio stands on fills up.
     for (const p of [...this.peds]) {
       if (p.dead) {

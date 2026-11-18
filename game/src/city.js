@@ -1,18 +1,18 @@
-// BRISA BAY v5 — the city itself: roads, buildings, beach, sea, palms,
+// BRISA BAY — the city itself: roads, buildings, beach, sea, palms,
 // lamps, billboards and the bridge. Everything is built procedurally from
 // one seed, so the map is identical on every run and the screenshots can be
-// re-staged exactly. v2 adds a visible sun disc with a glow, a glittering
-// sea with a foam edge, a lighthouse with a sweeping beam, a pier, neon
-// signs on the shops, glowing street lamps and two more billboards. v3:
-// the collectible packages and taxi fares place themselves on the road
-// lines and the open beach this city builds, so no map change was needed.
-// v5: the graphics round — facades are painted per storey (no more
-// stretched windows), lit windows glow through an emissive map, towers get
-// parapets and varied roof colours, and the ground gets crosswalks, plaza
-// tiles, kerbs and a wet-sand band, so the streets stop reading as flat
-// colour. The building loop consumes its seeded rng in exactly the v4
-// order — no new rng() calls inside it — so every cell keeps its v4
-// layout and no mission step can get buried by a reshuffle.
+// re-staged exactly. A visible sun disc with a glow, a glittering sea with
+// a foam edge, a lighthouse with a sweeping beam, a pier, neon signs on
+// the shops, glowing street lamps and two more billboards. The collectible
+// packages and taxi fares place themselves on the road lines and the open
+// beach this city builds, so no map change was needed. The graphics round
+// — facades are painted per storey (no more stretched windows), lit windows
+// glow through an emissive map, towers get parapets and varied roof colours,
+// and the ground gets crosswalks, plaza tiles, kerbs and a wet-sand band,
+// so the streets stop reading as flat colour. The building loop consumes
+// its seeded rng in exactly the earlier order — no new rng() calls inside
+// it — so every cell keeps its layout and no mission step can get buried
+// by a reshuffle.
 import * as THREE from 'three';
 import { CITY, PALETTE, SHOPS, BUS_STOPS, VENDORS } from './config.js';
 import { mulberry32, pick } from './utils.js';
@@ -91,10 +91,10 @@ export function buildCity(scene) {
     shops: [],
     palms: [],
     lighthouseBeam: null,
-    // v4: bus stops and vendor stalls, built below from config.
+    // Bus stops and vendor stalls, built below from config.
     busStops: [],
     vendorSpots: [],
-    // v5: how much of the new graphics actually got built (logic tests).
+    // How much of the new graphics actually got built (logic tests).
     v5counts,
   };
 
@@ -113,8 +113,9 @@ export function buildCity(scene) {
   scene.add(new THREE.Mesh(skyGeo, skyMat));
   scene.fog = new THREE.Fog(PALETTE.fog, 220, 700);
 
-  // Sun + ambient light. v5 deepens the contrast: a hotter sun, a dimmer
-  // hemisphere, so the shadows bite and the lit windows read.
+  // Sun + ambient light. The graphics round deepens the contrast: a
+  // hotter sun, a dimmer hemisphere, so the shadows bite and the lit
+  // windows read.
   const sun = new THREE.DirectionalLight(PALETTE.sun, PALETTE.sunIntensity);
   sun.position.set(-160, 190, -120);
   sun.castShadow = true;
@@ -127,7 +128,7 @@ export function buildCity(scene) {
   scene.add(sun);
   scene.add(new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.7));
 
-  // v2: the sun itself, low in the west, with a halo that bleeds into the
+  // The sun itself, low in the west, with a halo that bleeds into the
   // haze. The disc sits on the sky dome so it reads in every wide shot.
   const sunDir = new THREE.Vector3(-160, 190, -120).normalize();
   const sunDisc = new THREE.Mesh(
@@ -146,7 +147,7 @@ export function buildCity(scene) {
   sunGlow.scale.setScalar(260);
   scene.add(sunGlow);
 
-  // v5: high soft clouds, so the sky has depth instead of a flat gradient.
+  // High soft clouds, so the sky has depth instead of a flat gradient.
   // A fresh seeded stream — the shared rng is untouched, the city layout
   // cannot shift under them.
   const cloudRng = mulberry32(20261119);
@@ -180,7 +181,7 @@ export function buildCity(scene) {
   sand.receiveShadow = true;
   scene.add(sand);
 
-  // v5: a wet-sand band along the waterline, darker than the dry beach.
+  // A wet-sand band along the waterline, darker than the dry beach.
   const wetSand = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.beachEnd - CITY.half, CITY.half * 2 + 40),
     new THREE.MeshLambertMaterial({ map: wetSandTexture() }),
@@ -192,7 +193,7 @@ export function buildCity(scene) {
   scene.add(wetSand);
 
   // The sea: a big plane that shimmers with a slow sine in the vertex
-  // shader. v2 adds a white foam edge where the water meets the sand and a
+  // shader. A white foam edge where the water meets the sand and a
   // sun-glitter band that sparkles as the waves roll.
   const seaMat = new THREE.ShaderMaterial({
     uniforms: { t: { value: 0 } },
@@ -221,7 +222,7 @@ export function buildCity(scene) {
     scene.add(hRoad);
   }
 
-  // v5: kerb strips along every road edge, so the asphalt ends in a kerb
+  // Kerb strips along every road edge, so the asphalt ends in a kerb
   // instead of melting into the pavement. The two axes sit at different
   // heights (0.09 / 0.095) so they never z-fight where they cross.
   const kerbMat = new THREE.MeshLambertMaterial({ map: kerbTexture() });
@@ -246,7 +247,7 @@ export function buildCity(scene) {
     }
   }
 
-  // v5: a zebra crossing on every intersection, plaza tiles on the four
+  // A zebra crossing on every intersection, plaza tiles on the four
   // central ones instead. One shared geometry and material each.
   const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
   const crossMat = new THREE.MeshLambertMaterial({ map: crosswalkTexture() });
@@ -287,12 +288,12 @@ export function buildCity(scene) {
       const cx = (lines[ix] + lines[ix + 1]) / 2;
       const cz = (lines[iz] + lines[iz + 1]) / 2;
       const towers = 1 + Math.floor(rng() * 3);
-      // v3: the safehouse lives in this cell (ix 0, iz 5). Seeded towers
+      // The safehouse lives in this cell (ix 0, iz 5). Seeded towers
       // here buried it — and with it the first mission's target, the
       // player spawn and an armour pickup, all unreachable. Only the
       // scene adds and the collider are skipped for this cell; the meshes
       // are still built and the rng is still consumed exactly as before,
-      // so every other cell keeps its v2 layout.
+      // so every other cell keeps its earlier layout.
       const skipCell = ix === 0 && iz === 5;
       for (let t = 0; t < towers; t++) {
         const w = 14 + rng() * 16;
@@ -303,7 +304,7 @@ export function buildCity(scene) {
         const x = cx + ox;
         const z = cz + oz;
         const pi = Math.floor(rng() * PASTEL.length);
-        // v5: the facade's storeys and columns match this tower's size,
+        // The facade's storeys and columns match this tower's size,
         // and the roof colour is picked from the cell — deterministic, so
         // the shared rng stream is untouched and the layout cannot shift.
         const { floors, cols } = facadeBucket(h, w);
@@ -322,7 +323,7 @@ export function buildCity(scene) {
         roof.position.set(x, h + 1.15, z);
         roof.userData.v5kind = 'roof';
         if (!skipCell) scene.add(roof);
-        // v5: a parapet rim around the roof edge, so the tower reads as a
+        // A parapet rim around the roof edge, so the tower reads as a
         // building with a roof instead of a flat-topped box.
         const rim = new THREE.Mesh(boxGeo, parapetMat);
         rim.scale.set(w + 0.8, 0.9, d + 0.8);
@@ -396,7 +397,7 @@ export function buildCity(scene) {
     scene.add(pillar);
   }
 
-  // v2: the pier — a wooden walkway out into the sea at the south beach,
+  // The pier — a wooden walkway out into the sea at the south beach,
   // with posts and a lamp at the far end. Cars stop at its foot.
   const pierMat = new THREE.MeshLambertMaterial({ color: 0x8a6b46 });
   const pierDeck = new THREE.Mesh(new THREE.BoxGeometry(44, 0.8, 6), pierMat);
@@ -419,7 +420,7 @@ export function buildCity(scene) {
   scene.add(pierLampPost);
   colliders.push({ minX: 250, maxX: 258, minZ: -44, maxZ: -36 });
 
-  // v2: the lighthouse at the north end of the beach — a striped tower with
+  // The lighthouse at the north end of the beach — a striped tower with
   // a lamp room and a beam that sweeps the bay. The beam group is exposed
   // on `world` so the game loop can rotate it.
   const lh = new THREE.Group();
@@ -472,7 +473,7 @@ export function buildCity(scene) {
   scene.add(boardPost);
   colliders.push({ minX: 222, maxX: 230, minZ: -88, maxZ: -80 });
 
-  // v2: two more billboards — the casino's WIN BIG sign by the north road,
+  // Two more billboards — the casino's WIN BIG sign by the north road,
   // and a marina board facing the beach.
   const board2 = new THREE.Mesh(
     new THREE.PlaneGeometry(22, 11),
@@ -496,7 +497,7 @@ export function buildCity(scene) {
   board3Post.position.set(198, 3.5, 96);
   scene.add(board3Post);
   colliders.push({ minX: 192, maxX: 200, minZ: 92, maxZ: 100 });
-  // v5: a glow halo behind the marina neon, so the sign reads as a tube
+  // A glow halo behind the marina neon, so the sign reads as a tube
   // of light instead of a flat picture.
   const board3Halo = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sunGlowTex, color: 0x4fd8ff, transparent: true, opacity: 0.45,
@@ -535,7 +536,7 @@ export function buildCity(scene) {
     plantPalm(x + 9, -195);
     plantPalm(x - 9, 195);
   }
-  // v2: a palm cluster around the pier, so the south beach is not bare.
+  // A palm cluster around the pier, so the south beach is not bare.
   for (let i = 0; i < 6; i++) plantPalm(220 + rng() * 14, -70 + rng() * 60, 0.9 + rng() * 0.4);
 
   // Beach umbrellas: striped cones on poles, scattered on the sand.
@@ -554,7 +555,7 @@ export function buildCity(scene) {
     scene.add(pole, canopy);
   }
 
-  // Street lamps on the main avenues. v2 adds a warm glow sprite to every
+  // Street lamps on the main avenues. A warm glow sprite on every
   // third lamp, so the avenues read as lit at sunset without adding lights.
   const poleMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe6a8 });
@@ -584,9 +585,9 @@ export function buildCity(scene) {
     }
   }
 
-  // Shops: a sign board + a lit box at each shop corner. v2 hangs a neon
-  // tube sign under the board, so each shop glows in its own colour.
-  // v5: a real awning over the shopfront, a lit window, and a glow halo
+  // Shops: a sign board + a lit box at each shop corner. A neon tube
+  // sign hangs under the board, so each shop glows in its own colour.
+  // A real awning over the shopfront, a lit window, and a glow halo
   // behind the neon — the shopfront gets depth instead of a flat box.
   const neonColors = { guns: '#ff4fd8', garage: '#4fd8ff', food: '#ffb84f' };
   const awningColors = { guns: 0xc94f43, garage: 0x4fd8ff, food: 0xf2a007 };
@@ -671,7 +672,7 @@ export function buildCity(scene) {
   scene.add(porchGlow);
   colliders.push({ minX: sh.x - 6, maxX: sh.x + 6, minZ: sh.z - 5, maxZ: sh.z + 5 });
 
-  // v4: bus stops — a sign board, a bench and a pole at each stop, so a
+  // Bus stops — a sign board, a bench and a pole at each stop, so a
   // waiting passenger reads from down the street. The sign faces the
   // road; the bench sits 9 m off the line, where the waiters stand.
   for (const stop of BUS_STOPS) {
@@ -697,7 +698,7 @@ export function buildCity(scene) {
     world.busStops.push({ ...stop, waitX: stop.x + 9, waitZ: stop.z });
   }
 
-  // v4: vendor stalls — a counter, a bright striped canopy and a name
+  // Vendor stalls — a counter, a bright striped canopy and a name
   // board. The stall itself is a small collider so cars cannot drive
   // through the flowers; the vendor ped stands behind it.
   for (const v of VENDORS) {

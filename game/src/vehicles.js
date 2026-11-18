@@ -1,13 +1,13 @@
-// BRISA BAY v3 — cars: the player's ride, city traffic and the BCPD.
+// BRISA BAY — cars: the player's ride, city traffic and the BCPD.
 // Arcade handling (no physics engine): each car is a heading + speed on
 // the road grid, with circle-vs-box building collision and circle-vs-circle
 // car collision. Traffic follows the road lines; police pursue the player
-// and the helicopter orbits from three stars up. v2 adds glossy paint
-// (Phong bodies that catch the sunset), working brake lights, garage
-// upgrades that change the car's real performance and silhouette, and
-// police roadblocks at four and five stars. v3: the Grand Prix rivals
-// steer with the same chase maths as the police (see raceDrive in
-// missions.js), so no new driving code was needed.
+// and the helicopter orbits from three stars up. Glossy paint (Phong
+// bodies that catch the sunset), working brake lights, garage upgrades
+// that change the car's real performance and silhouette, and police
+// roadblocks at four and five stars. The Grand Prix rivals steer with
+// the same chase maths as the police (see raceDrive in missions.js), so
+// no new driving code was needed.
 import * as THREE from 'three';
 import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT } from './config.js';
 import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
@@ -16,7 +16,7 @@ import { barrierTexture, glowTexture } from './textures.js';
 
 const CAR_COLORS = { police: 0x1d2733 };
 
-// v5: headlight/taillight halos — shared glow sprite materials, created
+// Headlight/taillight halos — shared glow sprite materials, created
 // lazily so importing this module in Node (logic tests) never touches the
 // DOM before the test stubs exist.
 let headGlowMat = null;
@@ -37,8 +37,8 @@ function lightGlowMats() {
 export function makeCarMesh(defKey, colorHex) {
   const def = CAR_DEFS[defKey];
   const g = new THREE.Group();
-  // v2: Phong paint — a specular highlight so the sunset glints off the
-  // body instead of the flat Lambert grey of v1.
+  // Phong paint — a specular highlight so the sunset glints off the
+  // body instead of the flat Lambert grey of the first version.
   const bodyMat = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 70, specular: 0x555555 });
   const darkMat = new THREE.MeshLambertMaterial({ color: 0x16181d });
   const glassMat = new THREE.MeshPhongMaterial({ color: 0x9fc4d8, shininess: 120, specular: 0x888888 });
@@ -49,7 +49,7 @@ export function makeCarMesh(defKey, colorHex) {
   const longBody = isTruck || isVan || isBus;
   const bodyLen = isBus ? 7.6 : isBike ? 2.2 : longBody ? 5.4 : 4.4;
 
-  // v4: a bike is a narrow frame with a rider, not a car body — build it
+  // A bike is a narrow frame with a rider, not a car body — build it
   // here and return early, before the car-only parts (cabin, plate,
   // exhaust) below.
   if (isBike) {
@@ -102,7 +102,7 @@ export function makeCarMesh(defKey, colorHex) {
     tail.position.set(0, 0.6, -1.12);
     g.add(tail);
     g.userData.tailMats = [tm];
-    // v5: glow halos on the bike's lights, so it reads at dusk.
+    // Glow halos on the bike's lights, so it reads at dusk.
     const bikeGlow = lightGlowMats();
     const bikeHeadHalo = new THREE.Sprite(bikeGlow.headGlowMat);
     bikeHeadHalo.position.set(0, 0.6, 1.25);
@@ -143,6 +143,7 @@ export function makeCarMesh(defKey, colorHex) {
     cargo.castShadow = true;
     g.add(cargo);
   }
+
   // Wheels — kept in userData so Sport Tyres can widen them visibly.
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 10);
   const wheelMat = new THREE.MeshLambertMaterial({ color: 0x0c0d10 });
@@ -158,7 +159,7 @@ export function makeCarMesh(defKey, colorHex) {
     }
   }
   g.userData.wheels = wheels;
-  // v2: armour plating — a steel roof plate, hidden until the upgrade is
+  // Armour plating — a steel roof plate, hidden until the upgrade is
   // bought. Engine tune gets a glowing exhaust tip at the rear.
   const plate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 2.2), new THREE.MeshLambertMaterial({ color: 0x4a4f55 }));
   plate.position.set(0, 1.42, -0.15);
@@ -188,7 +189,7 @@ export function makeCarMesh(defKey, colorHex) {
     tailMats.push(tm);
   }
   g.userData.tailMats = tailMats;
-  // v5: glow halos on the headlights and one centred red halo on the
+  // Glow halos on the headlights and one centred red halo on the
   // tail, so the lights read as light at dusk instead of flat boxes.
   const carGlow = lightGlowMats();
   for (const x of [-0.6, 0.6]) {
@@ -345,7 +346,7 @@ export class TrafficManager {
     this.world = world;
     this.rng = rng;
     this.cars = [];
-    // v4: bikes are common, buses rare — repeats weight the draw.
+    // Bikes are common, buses rare — repeats weight the draw.
     this.keys = ['brisa', 'brisa', 'vento', 'vento', 'carguero', 'caminar', 'taxi', 'moto', 'moto', 'bus'];
     this.dwelling = []; // { car, stop } — buses stopped at a stop this frame
   }
@@ -367,7 +368,7 @@ export class TrafficManager {
       const heading = axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? 0 : Math.PI);
       const car = new Car(key, color, x, z, heading);
       car.kind = 'traffic';
-      // v4: bikes weave, buses crawl and stop at bus stops.
+      // Bikes weave, buses crawl and stop at bus stops.
       const ai = { axis, dir, targetSpeed: 7 + this.rng() * 4, wait: 0 };
       if (key === 'moto') {
         ai.weave = true;
@@ -395,7 +396,7 @@ export class TrafficManager {
       if (car.dead) continue;
       const ai = car.ai;
       if (ai.wait > 0) { ai.wait -= dt; car.drive(dt, 0, 0, this.world.colliders); continue; }
-      // v4: a bus at a stop dwells — doors open, passengers board.
+      // A bus at a stop dwells — doors open, passengers board.
       // The dwell list is rebuilt every frame, so the game can board
       // waiters exactly once per stop (see boardedThisStop).
       if (ai.bus) {
@@ -436,7 +437,7 @@ export class TrafficManager {
         if (ahead > 0 && ahead < 8 && side < 2.4) blocked = true;
       }
       const throttle = blocked ? -0.4 : (car.speed < ai.targetSpeed ? 0.6 : 0.1);
-      // v4: a bike weaves — a slow sine on the steering, so it snakes
+      // A bike weaves — a slow sine on the steering, so it snakes
       // between lanes instead of cruising dead straight like a car.
       let steer = 0;
       if (ai.weave) {

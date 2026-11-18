@@ -1,9 +1,9 @@
-// BRISA BAY v3 — the story: twelve chapters of Rio Marin's return to
+// BRISA BAY — the story: twelve chapters of Rio Marin's return to
 // Brisa Bay. A mission is a list of steps; the manager runs them in order,
 // plants a beacon on the current objective, and pays out when the last
-// step clears. v3 adds two chapters: a checkpoint street race (Midnight
+// step clears. Two later chapters add a checkpoint street race (Midnight
 // Grand Prix, new `race` step type) and the finale (The Last Ferry), and
-// fixes Mission 8 — its first two steps sat on the casino tower itself,
+// fix Mission 8 — its first two steps sat on the casino tower itself,
 // so the radii could never be reached from outside the building.
 import * as THREE from 'three';
 import { MISSION_META, RACE_CHECKPOINTS } from './config.js';
@@ -57,7 +57,7 @@ export const MISSIONS = [
   },
   {
     steps: [
-      // v3 fix: the Solmar Casino tower sits on the (0,-180) intersection
+      // The Solmar Casino tower sits on the (0,-180) intersection
       // itself, so the centre of the building is inside a collider and no
       // player can ever stand within 10m of it. The radii here reach the
       // tower's faces (closest approach ~14m), so the steps complete from

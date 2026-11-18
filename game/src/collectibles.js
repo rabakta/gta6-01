@@ -1,10 +1,10 @@
-// BRISA BAY v3 — collectible packages. Twenty hidden parcels across the
-// city: the beach, the docks, the lighthouse path, the pier end, the
-// alleys. Walk or drive through one to collect it; the count lives in the
-// save, so a package stays found across sessions, and all twenty pay a
-// one-off $5,000 bonus. Every spot sits on a road line or on the open
-// beach, so none can hide inside a building. The packages are deliberately
-// NOT on the minimap — finding them is the game.
+// BRISA BAY — collectible packages. Twenty hidden parcels across the city:
+// the beach, the docks, the lighthouse path, the pier end, the alleys.
+// Walk or drive through one to collect it; the count lives in the save, so
+// a package stays found across sessions, and all twenty pay a one-off
+// $5,000 bonus. Every spot sits on a road line or on the open beach, so
+// none can hide inside a building. The packages are deliberately NOT on
+// the minimap — finding them is the game.
 import * as THREE from 'three';
 import { COLLECTIBLES, COLLECTIBLE_BONUS } from './config.js';
 import { glowTexture } from './textures.js';
