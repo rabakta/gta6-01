@@ -41,17 +41,21 @@ export function stageShot(game, shot) {
     g.missions.startMission(5);
     g.player.camDist = 11;
   } else if (shot === 'mission') {
-    // Mission 3 in progress: package run at the docks, two stars, guards.
+    // Mission 3 in progress: package run at the docks, three stars, heli up.
+    // Staged east of the SPRAY & GO shop (150,-150) so its sign board is
+    // nowhere near the camera; Rio faces the docks package and the sea.
     g.missions.startMission(2);
     g.missions.stepIndex = 1; // the collect step
     g.missions.beginStep();
-    g.player.pos.set(150, 0, -150);
-    g.player.heading = Math.PI / 2;
-    g.player.camYaw = Math.PI / 2 + Math.PI;
-    g.setWanted(2);
-    g.police.update(0.1, 2, g.player.pos, false, g.allCars());
-    g.traffic.spawn(6, { x: 150, z: -150 }, 110);
-    g.peds.spawn(6, { x: 150, z: -150 }, 70);
+    g.player.pos.set(170, 0, -132);
+    g.player.heading = 2.63; // facing the package at (180,-150)
+    g.player.camYaw = 2.63 + Math.PI;
+    g.setWanted(3);
+    g.police.update(0.1, 3, g.player.pos, true, g.allCars());
+    g.police.update(0.1, 3, g.player.pos, true, g.allCars());
+    g.police.update(0.1, 3, g.player.pos, true, g.allCars());
+    g.traffic.spawn(6, { x: 170, z: -132 }, 110);
+    g.peds.spawn(6, { x: 170, z: -132 }, 70);
     g.player.camDist = 9;
   }
   // Let the world settle for a beat so the first rendered frame is composed.

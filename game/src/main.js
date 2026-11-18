@@ -105,6 +105,7 @@ class Game {
       this.audio.ensure();
       this.audio.resume();
       if (e.code === 'Enter' && this.state === 'menu') this.startPlaying(false);
+      if (e.code === 'Enter' && (this.state === 'wasted' || this.state === 'busted')) this.respawn();
       if (e.code === 'KeyN' && this.state === 'menu') this.startPlaying(true);
       if (e.code === 'KeyC' && this.state === 'menu') this.startPlaying(false);
       if ((e.code === 'KeyP' || e.code === 'Escape') && this.state === 'playing') this.pause();
@@ -124,12 +125,13 @@ class Game {
     addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     const canvas = document.getElementById('game');
     canvas.addEventListener('pointerdown', (e) => {
-      this.dragging = true; this.lastX = e.clientX; this.lastY = e.clientY;
+      this.dragging = true; this.dragDist = 0; this.lastX = e.clientX; this.lastY = e.clientY;
       this.audio.ensure(); this.audio.resume();
     });
     addEventListener('pointermove', (e) => {
       if (!this.dragging) return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
+      this.dragDist += Math.abs(dx) + Math.abs(dy);
       this.lastX = e.clientX; this.lastY = e.clientY;
       this.player.camYaw -= dx * 0.005;
       this.player.camPitch = clamp(this.player.camPitch + dy * 0.004, 0.05, 0.9);
@@ -138,6 +140,7 @@ class Game {
     canvas.addEventListener('click', (e) => {
       if (this.state !== 'playing' || this.player.inCar) return;
       if (e.target !== canvas) return;
+      if ((this.dragDist || 0) > 6) return; // it was a camera drag, not a shot
       this.shoot();
     });
     // Shop buttons are plain DOM; clicks there must not shoot.
