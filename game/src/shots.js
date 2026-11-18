@@ -143,9 +143,11 @@ export function stageShot(game, shot) {
     g.player.camDist = 11;
   } else if (shot === 'garage') {
     // Verification only: Rio on foot at GARAGE 24 with the shop open, so
-    // the upgrade buttons can be screenshotted and checked.
+    // the upgrade buttons can be screenshotted and checked. Rio stands
+    // 5.7m from the shop counter — inside the 7m nearShop radius — so the
+    // panel re-renders after each purchase, as it does in real play.
     const shop = g.world.shops.find((s) => s.kind === 'garage');
-    g.player.pos.set(144, 0, -144);
+    g.player.pos.set(146, 0, -146);
     g.player.heading = Math.PI * 0.75;
     g.player.camYaw = Math.PI * 0.75 + Math.PI;
     g.nearShop = shop;
