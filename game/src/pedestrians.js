@@ -1,11 +1,6 @@
-// BRISA BAY — pedestrians: beach-goers and city walkers, plus the armed
-// guards missions spawn. A ped is a low-poly figure (torso, head, legs)
-// that strolls the sidewalks; danger nearby (a speeding car, gunfire, an
-// explosion) makes it flee, and a fleeing ped spreads the panic to the
-// walkers around it. Corpses far from the player clear first, so the
-// streets stay tidy where Rio actually is. The crowd gets jobs —
-// joggers, walking groups, bus-stop waiters, vendors, a street performer
-// with a watching crowd, and beachgoers who stop to watch the sea.
+// BRISA BAY — pedestrians: city walkers, joggers, groups, waiters,
+// vendors, a performer with watchers, beachgoers, and armed guards.
+// Danger makes them flee and panic spreads; corpses clear far-first.
 import * as THREE from 'three';
 import { clamp, mulberry32, pick, dist2 } from './utils.js';
 import { resolveCircleCollisions } from './city.js';
@@ -28,6 +23,7 @@ export class Ped {
     this.fleeing = false;
     this.fleeFrom = null;
     this.deadTimer = 0; // seconds since death; corpses are cleared by the manager
+    this.age = 0; // seconds alive; the manager despawns old far walkers
     this.phase = Math.random() * 6;
     this.shootTimer = 0;
     // Group followers walk with their leader; watchers face their
@@ -38,22 +34,46 @@ export class Ped {
     this.performer = opts.performer || null;
     this.stop = opts.stop || null;
     this.pauseTimer = 0;
-    // Build the figure: box torso and head, two legs that swing as it walks.
+    // Segmented figure: hips + chest, head with hair, arms and legs that
+    // swing from the shoulder and hip (geometry translated so the mesh
+    // origin is the joint), shoes on the feet. Roles read by colour:
+    // joggers bright with white shoes, beachgoers barefoot.
     const rng = mulberry32((x * 13 + z * 7) | 0);
     const shirt = new THREE.MeshLambertMaterial({ color: opts.shirt ?? pick(rng, SHIRTS) });
     const skin = new THREE.MeshLambertMaterial({ color: opts.skin ?? pick(rng, SKINS) });
     const pants = new THREE.MeshLambertMaterial({ color: pick(rng, PANTS_COLOURS) });
+    const shoeMat = new THREE.MeshLambertMaterial({ color: this.role === 'jogger' ? 0xe8e2d0 : 0x1a1a1a });
     this.mesh = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.8, 0.3), shirt);
-    body.position.y = 1.0;
-    body.castShadow = true;
+    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.3), pants);
+    hips.position.y = 0.78;
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.3), shirt);
+    chest.position.y = 1.18;
+    chest.castShadow = true;
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.36), skin);
     head.position.y = 1.62;
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.65, 0.24), pants);
-    legL.position.set(-0.14, 0.32, 0);
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.4), new THREE.MeshLambertMaterial({ color: pick(rng, [0x1a1210, 0x3a2a1a, 0x5a4a38]) }));
+    hair.position.y = 1.85;
+    this.mesh.add(hips, chest, head, hair);
+    const legGeo = new THREE.BoxGeometry(0.2, 0.65, 0.24);
+    legGeo.translate(0, -0.325, 0);
+    const legL = new THREE.Mesh(legGeo, pants);
+    legL.position.set(-0.14, 0.65, 0);
     const legR = legL.clone();
     legR.position.x = 0.14;
-    this.mesh.add(body, head, legL, legR);
+    if (this.role !== 'beachgoer') {
+      for (const leg of [legL, legR]) {
+        const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.32), shoeMat);
+        shoe.position.set(0, -0.6, 0.03);
+        leg.add(shoe);
+      }
+    }
+    const armGeo = new THREE.BoxGeometry(0.16, 0.62, 0.2);
+    armGeo.translate(0, -0.31, 0);
+    const armL = new THREE.Mesh(armGeo, shirt);
+    armL.position.set(-0.37, 1.42, 0);
+    const armR = armL.clone();
+    armR.position.x = 0.37;
+    this.mesh.add(legL, legR, armL, armR);
     // A hat on some heads — caps, a sun hat, a beanie — so the crowd
     // reads as individuals at a glance, not a clone army.
     if (opts.hat !== false && rng() < 0.45) {
@@ -63,12 +83,14 @@ export class Ped {
       this.mesh.add(hat);
     }
     this.legs = [legL, legR];
+    this.arms = [armL, armR];
     this.mesh.position.copy(this.pos);
     scene.add(this.mesh);
   }
 
   update(dt, world, danger) {
     if (this.dead) return;
+    this.age += dt;
     // Flee from a danger zone (speeding car, gunfire, explosion): the
     // caller passes {x, z, r} or null.
     if (danger && dist2(this.pos.x, this.pos.z, danger.x, danger.z) < danger.r) {
@@ -141,9 +163,16 @@ export class Ped {
     resolveCircleCollisions(world.colliders, this.pos, 0.5);
     this.pos.x = clamp(this.pos.x, -210, 250);
     this.pos.z = clamp(this.pos.z, -210, 210);
-    const swing = Math.sin(this.phase + dt * this.speed * 4) * 0.4;
+    // Walk-cycle swing, scaled by actual speed: a standing ped stands
+    // still (the old code froze rooted peds mid-stride). Arms swing
+    // opposite to the same-side leg.
+    const swing = Math.sin(this.phase + dt * this.speed * 4) * 0.4 * clamp(this.speed / 2, 0, 1);
     this.legs[0].rotation.x = swing;
     this.legs[1].rotation.x = -swing;
+    if (this.arms) {
+      this.arms[0].rotation.x = -swing;
+      this.arms[1].rotation.x = swing;
+    }
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.heading;
     this.phase += dt * this.speed * 2;
@@ -228,12 +257,13 @@ export class PedManager {
     return group;
   }
 
-  // Waiters at a bus stop — they stand by the bench until a bus
-  // dwells there, then board (see boardWaiters).
+  // Waiters at a bus stop — they queue on the north side of the sign,
+  // clear of the bench and pole (the old spot put them through the
+  // bench). They board when a bus dwells there (see boardWaiters).
   spawnWaiters(stop, count = 2) {
     const out = [];
     for (let i = 0; i < count; i++) {
-      const p = new Ped(this.scene, stop.waitX + (Math.random() - 0.5) * 2, stop.waitZ + 1.5 + i * 1.2, { role: 'waiter', stop });
+      const p = new Ped(this.scene, stop.waitX + (Math.random() - 0.5) * 2, stop.waitZ - 1.5 - i * 1.2, { role: 'waiter', stop });
       this.peds.push(p);
       out.push(p);
     }
@@ -315,6 +345,33 @@ export class PedManager {
     // Prune the long-dead far from the player to keep the scene light.
     if (this.peds.length > 90) {
       this.peds = this.peds.filter((p) => !p.dead || Math.random() < 0.5);
+    }
+    // Despawn: old ambient walkers far from the player leave the scene.
+    // Rooted roles (waiters, vendors, performer, watchers, groups) and
+    // guards stay — they belong to a fixed spot. The age gate keeps
+    // freshly staged peds alive for screenshots.
+    const ambient = (r) => r === 'walker' || r === 'jogger' || r === 'beachgoer';
+    if (playerPos) {
+      for (const p of [...this.peds]) {
+        if (!p.dead && ambient(p.role) && p.age > 10 && dist2(p.pos.x, p.pos.z, playerPos.x, playerPos.z) > 150) this.remove(p);
+      }
+    }
+    // No two walkers share the same space: push overlapping amblers apart.
+    const live = this.peds.filter((p) => !p.dead && ambient(p.role));
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i], b = live[j];
+        const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < 0.49) {
+          const d = Math.sqrt(d2);
+          const push = (0.7 - d) / 2;
+          const nx = d > 0.01 ? dx / d : 1, nz = d > 0.01 ? dz / d : 0;
+          a.pos.x -= nx * push; a.pos.z -= nz * push;
+          b.pos.x += nx * push; b.pos.z += nz * push;
+          a.mesh.position.copy(a.pos); b.mesh.position.copy(b.pos);
+        }
+      }
     }
   }
 

@@ -395,6 +395,7 @@ export function buildCity(scene) {
     const pillar = new THREE.Mesh(pillarGeo, deckMat);
     pillar.position.set(px, 1.1, 0);
     scene.add(pillar);
+    colliders.push({ minX: px - 1.3, maxX: px + 1.3, minZ: -1.3, maxZ: 1.3 });
   }
 
   // The pier — a wooden walkway out into the sea at the south beach,
@@ -418,7 +419,7 @@ export function buildCity(scene) {
   const pierLampPost = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 3.2, 6), deckMat);
   pierLampPost.position.set(294, 1.7, -40);
   scene.add(pierLampPost);
-  colliders.push({ minX: 250, maxX: 258, minZ: -44, maxZ: -36 });
+  colliders.push({ minX: 252, maxX: 296, minZ: -43, maxZ: -37 });
 
   // The lighthouse at the north end of the beach — a striped tower with
   // a lamp room and a beam that sweeps the bay. The beam group is exposed
@@ -553,6 +554,7 @@ export function buildCity(scene) {
     canopy.position.set(ux, 3, uz);
     canopy.castShadow = true;
     scene.add(pole, canopy);
+    colliders.push({ minX: ux - 0.3, maxX: ux + 0.3, minZ: uz - 0.3, maxZ: uz + 0.3 });
   }
 
   // Street lamps on the main avenues. A warm glow sprite on every
@@ -568,12 +570,18 @@ export function buildCity(scene) {
   let lampIndex = 0;
   for (const l of lines) {
     for (let v = -180; v <= 180; v += 60) {
-      for (const [x, z] of [[l + 8, v], [v, l + 8]]) {
+      // Lamps sit on the inner corner of each intersection, 8 m from
+      // both road lines — 1 m off the asphalt. The old spots sat ON a
+      // road line, which only showed once lamps got colliders: cars
+      // wedged against them (the race rivals stopped dead at (-180, 68)).
+      const off = v < 0 ? 8 : -8;
+      for (const [x, z] of [[l + 8, v + off], [v + off, l + 8]]) {
         const pole = new THREE.Mesh(poleGeo, poleMat);
         pole.position.set(x, 3, z);
         const lamp = new THREE.Mesh(lampGeo, lampMat);
         lamp.position.set(x, 6.1, z);
         scene.add(pole, lamp);
+        colliders.push({ minX: x - 0.3, maxX: x + 0.3, minZ: z - 0.3, maxZ: z + 0.3 });
         if (lampIndex % 3 === 0) {
           const glow = new THREE.Sprite(lampGlowMat);
           glow.position.set(x, 6.1, z);
@@ -695,6 +703,8 @@ export function buildCity(scene) {
       leg.position.set(stop.x + 9 + bx, 0.3, stop.z + 1.6);
       scene.add(leg);
     }
+    colliders.push({ minX: stop.x + 9 - 1.4, maxX: stop.x + 9 + 1.4, minZ: stop.z + 1.1, maxZ: stop.z + 2.1 });
+    colliders.push({ minX: stop.x + 9 - 0.2, maxX: stop.x + 9 + 0.2, minZ: stop.z - 0.2, maxZ: stop.z + 0.2 });
     world.busStops.push({ ...stop, waitX: stop.x + 9, waitZ: stop.z });
   }
 

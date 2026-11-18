@@ -1,20 +1,9 @@
 // BRISA BAY — boot, game loop and the glue between systems.
-// Rio Marin is back in Brisa Bay: drive, steal, run missions, dodge the
-// BCPD. Later rounds add two new story chapters (the Grand Prix race and
-// the finale), taxi fares and 20 collectible packages, and a fix for
-// Mission 8, whose casino steps could never be reached; filmic tone
-// mapping for the sunset, garage upgrades, world pickups, police
-// roadblocks, exhaust and dust, brake lights, a fourth radio station and
-// two new missions; the city gets busier — bikes and buses in traffic,
-// bus stops with boarding passengers, walking groups, joggers, vendors,
-// a street performer, birds, and parked cars Rio can steal. The graphics
-// round — emissive windows, ground detail and a headlight pool on the
-// road ahead of whatever Rio is driving; no gameplay system changes.
 import * as THREE from 'three';
 import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
 import { buildCity, nearestRoadCoord } from './city.js';
-import { Car, TrafficManager, PoliceManager } from './vehicles.js';
+import { Car, TrafficManager, PoliceManager, carsOverlap } from './vehicles.js';
 import { Player } from './player.js';
 import { PedManager } from './pedestrians.js';
 import { Combat, ParticleSystem } from './combat.js';
@@ -100,13 +89,16 @@ class Game {
     this.dustTimer = 0;
     this.roadblockAlerted = false;
     this.lastNearShop = null; // for the one-time "Press E" shop prompt
+    this.lastNearCar = null; // same, for the "Press E" car prompt
 
     this.traffic.spawn(14, { x: -140, z: 140 }, 150);
     this.peds.spawn(24, { x: -140, z: 140 }, 120);
     // A few parked cars near the start so the first minute has wheels.
-    this.spawnCar('brisa', 0xc94f43, -120, 120, Math.PI / 2);
-    this.spawnCar('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
-    this.spawnCar('taxi', 0xf2a007, -160, 100, 0);
+    // Parked, not decorative: spawnParked registers them, so E steals
+    // them like any other car (spawnCar cars were invisible to E).
+    this.spawnParked('brisa', 0xc94f43, -120, 120, Math.PI / 2);
+    this.spawnParked('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
+    this.spawnParked('taxi', 0xf2a007, -160, 100, 0);
     // The city wakes up — waiters at two stops, a performer with a
     // crowd at the Plaza, vendors behind their stalls, parked rides Rio
     // can steal, and two walking groups near the start.
@@ -300,6 +292,9 @@ class Game {
     // Whatever Rio drives gets his garage upgrades — armour, engine, tyres.
     car.applyUpgrades(this.save.upgrades || { armor: 0, engine: 0, tires: 0 });
     this.player.mesh.visible = false;
+    // Snap the chase cam behind the car at once. The old lerp took ~2 s
+    // to swing round, so W looked like it drove sideways or backwards.
+    this.player.camYaw = car.heading + Math.PI;
     this.audio.blip(660, 0.1, 0.12);
   }
 
@@ -351,10 +346,14 @@ class Game {
       if (ahead > 0 && ahead < 9 && side < 2.2) { blocked = true; break; }
     }
     car.drive(dt, blocked ? -0.4 : (car.speed < targetSpeed ? 0.7 : 0.15), 0, this.world.colliders);
-    const onLine = ai.axis === 'x'
-      ? Math.abs(car.pos.z - nearestRoadCoord(car.pos.z)) < 1.4
-      : Math.abs(car.pos.x - nearestRoadCoord(car.pos.x)) < 1.4;
-    if (onLine && Math.random() < dt * 0.5) {
+    // Turn only at an intersection (both coords on road lines) and snap
+    // onto it, so a rival never turns mid-block and drives through houses.
+    const onX = Math.abs(car.pos.x - nearestRoadCoord(car.pos.x)) < 1.2;
+    const onZ = Math.abs(car.pos.z - nearestRoadCoord(car.pos.z)) < 1.2;
+    const onLine = ai.axis === 'x' ? onZ : onX;
+    if (onLine && onX && onZ && Math.random() < dt * 0.5) {
+      car.pos.x = nearestRoadCoord(car.pos.x);
+      car.pos.z = nearestRoadCoord(car.pos.z);
       ai.axis = ai.axis === 'x' ? 'z' : 'x';
       car.heading += Math.random() < 0.5 ? Math.PI / 2 : -Math.PI / 2;
     }
@@ -532,11 +531,14 @@ class Game {
     if (p.inCar) {
       const car = p.inCar;
       car.drive(dt, fwd, strafe, this.world.colliders);
+      // Space is the handbrake: hard stop, brake lights on.
+      const handbrake = !!this.keys.Space;
+      if (handbrake) car.speed *= Math.max(0, 1 - 4 * dt);
       p.pos.copy(car.pos);
       p.heading = car.heading;
       this.audio.setEngine(clamp(Math.abs(car.speed) / car.eff.topSpeed, 0, 1), true);
-      // Brake lights: S while rolling forward lights the tail.
-      car.brakeLight(fwd < 0 && car.speed > 0.5);
+      // Brake lights: S while rolling forward, or the handbrake.
+      car.brakeLight((fwd < 0 && car.speed > 0.5) || handbrake);
       // Exhaust puffs at the tailpipe under throttle; a tuned engine
       // throws orange flame instead of grey smoke.
       const rearX = car.pos.x - Math.sin(car.heading) * (car.length / 2 + 0.3);
@@ -570,11 +572,39 @@ class Game {
         if (this.missions.state === 'active') this.missions.fail('Ride destroyed');
       }
     } else {
+      // Camera space: the camera sits at target + (sin yaw, cos yaw), so
+      // screen-forward is MINUS that vector. The old code had the sign
+      // backwards — W walked toward the camera, S walked away from it.
       const yaw = p.camYaw;
-      const mx = Math.sin(yaw) * fwd + Math.cos(yaw) * strafe;
-      const mz = Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
+      const mx = -Math.sin(yaw) * fwd + Math.cos(yaw) * strafe;
+      const mz = -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
       p.updateOnFoot(dt, { x: mx, z: mz }, !!(this.keys.ShiftLeft || this.keys.ShiftRight), this.world.colliders);
       this.audio.setEngine(0, false);
+      // On foot, Rio is solid: cars push him out of their box instead of
+      // driving through him, and a fast one hurts.
+      for (const car of this.allCars()) {
+        if (car.dead) continue;
+        const dx = p.pos.x - car.pos.x, dz = p.pos.z - car.pos.z;
+        const ah = dx * Math.sin(car.heading) + dz * Math.cos(car.heading);
+        const as = dx * Math.cos(car.heading) - dz * Math.sin(car.heading);
+        const hl = car.length / 2 + 0.6, hw = 1.05 + 0.6;
+        if (Math.abs(ah) < hl && Math.abs(as) < hw) {
+          const pushF = hl - Math.abs(ah), pushS = hw - Math.abs(as);
+          if (pushF < pushS) p.pos.x += Math.sin(car.heading) * Math.sign(ah) * pushF, p.pos.z += Math.cos(car.heading) * Math.sign(ah) * pushF;
+          else p.pos.x += Math.cos(car.heading) * Math.sign(as) * pushS, p.pos.z -= Math.sin(car.heading) * Math.sign(as) * pushS;
+          if (Math.abs(car.speed) > 5 && p.damage(8)) { this.wasted(); return; }
+        }
+      }
+      // ...and so are the peds: Rio shoves through a crowd, not through it.
+      for (const ped of this.peds.peds) {
+        if (ped.dead) continue;
+        const dx = ped.pos.x - p.pos.x, dz = ped.pos.z - p.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 0.01 && d < 0.9) {
+          ped.pos.x += (dx / d) * (0.9 - d);
+          ped.pos.z += (dz / d) * (0.9 - d);
+        }
+      }
     }
 
     // The headlight pool follows the driven car, hidden on foot.
@@ -589,17 +619,21 @@ class Game {
       this.headlightPool.visible = false;
     }
 
-    // Car-vs-car and car-vs-ped collisions for the player's car.
+    // Car-vs-car and car-vs-ped collisions for the player's car. The
+    // overlap test is length-aware (see carsOverlap), so a bus nose no
+    // longer clips through Rio's door before anything pushes back.
     if (p.inCar) {
       const car = p.inCar;
       for (const other of this.allCars()) {
         if (other === car || other.dead) continue;
-        const d = dist2(car.pos.x, car.pos.z, other.pos.x, other.pos.z);
-        if (d < 3.6) {
+        const pen = carsOverlap(car, other);
+        if (pen > 0) {
+          const dx = car.pos.x - other.pos.x, dz = car.pos.z - other.pos.z;
+          const d = Math.hypot(dx, dz) || 1;
+          const nx = dx / d, nz = dz / d;
+          car.pos.x += nx * pen / 2; car.pos.z += nz * pen / 2;
+          other.pos.x -= nx * pen / 2; other.pos.z -= nz * pen / 2;
           const impact = Math.abs(car.speed - other.speed);
-          const nx = (car.pos.x - other.pos.x) / (d || 1), nz = (car.pos.z - other.pos.z) / (d || 1);
-          car.pos.x += nx * 0.4; car.pos.z += nz * 0.4;
-          other.pos.x -= nx * 0.4; other.pos.z -= nz * 0.4;
           if (impact > 4) {
             car.damage(impact * 1.2);
             const died = other.damage(impact * 1.6);
@@ -624,7 +658,7 @@ class Game {
     }
 
     // Traffic + police + peds + missions + pickups + fares + packages.
-    this.traffic.update(dt, p.pos, this.allCars());
+    this.traffic.update(dt, p.pos, this.allCars(), this.peds.peds);
     // A dwelling bus boards its waiters — once per stop, so the same
     // bus does not keep boarding an empty bench for four seconds.
     for (const d of this.traffic.dwelling) {
@@ -635,7 +669,10 @@ class Game {
       if (n > 0) this.notify(n + (n === 1 ? ' passenger' : ' passengers') + ' boarded the bus.');
     }
     this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars(), p.heading);
-    const danger = this.wanted > 0 ? { x: p.pos.x, z: p.pos.z, r: 25 } : null;
+    // Peds flee a danger zone: wanted heat, or Rio speeding at them in
+    // a car even with no stars — a fast car is danger on its own.
+    const speeding = p.inCar && Math.abs(p.inCar.speed) > 10;
+    const danger = (this.wanted > 0 || speeding) ? { x: p.pos.x, z: p.pos.z, r: this.wanted > 0 ? 25 : 12 } : null;
     this.peds.update(dt, danger, p.pos);
     this.missions.update(dt);
     this.pickups.update(dt, p.pos, this);
@@ -698,6 +735,13 @@ class Game {
       this.notify('Press E - ' + this.nearShop.name + ': ' + this.nearShop.blurb);
     }
     this.lastNearShop = this.nearShop;
+    // Same prompt for a car in reach — E steals it. Once per approach,
+    // and never while a fare offer wants E for its passenger.
+    const nearCar = !p.inCar && !this.taxi.offer ? this.nearestCar(3.4) : null;
+    if (nearCar && nearCar !== this.lastNearCar) {
+      this.notify('Press E - steal the ' + nearCar.def.label);
+    }
+    this.lastNearCar = nearCar;
 
     // Keep the city populated around the player.
     if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
