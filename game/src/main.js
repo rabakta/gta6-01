@@ -4,9 +4,12 @@
 // taxi fares and 20 collectible packages, and a fix for Mission 8, whose
 // casino steps could never be reached. v2: filmic tone mapping for the
 // sunset, garage upgrades, world pickups, police roadblocks, exhaust and
-// dust, brake lights, a fourth radio station and two new missions.
+// dust, brake lights, a fourth radio station and two new missions. v4:
+// the city gets busier — bikes and buses in traffic, bus stops with
+// boarding passengers, walking groups, joggers, vendors, a street
+// performer, birds, and parked cars Rio can steal.
 import * as THREE from 'three';
-import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES } from './config.js';
+import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
 import { buildCity, nearestRoadCoord } from './city.js';
 import { Car, TrafficManager, PoliceManager } from './vehicles.js';
@@ -17,6 +20,7 @@ import { MissionManager } from './missions.js';
 import { PickupManager } from './pickups.js';
 import { TaxiManager } from './taxi.js';
 import { CollectibleManager } from './collectibles.js';
+import { Birds } from './birds.js';
 import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
@@ -57,6 +61,10 @@ class Game {
     // v3: the side activities — taxi fares and collectible packages.
     this.taxi = new TaxiManager(this);
     this.collectibles = new CollectibleManager(this.scene, this.save);
+    // v4: birds over the lighthouse and the pier, and the parked cars
+    // Rio can steal (see spawnParked).
+    this.birds = new Birds(this.scene);
+    this.parked = [];
 
     this.keys = {};
     this.state = 'menu'; // menu | playing | paused | wasted | busted | ending
@@ -84,6 +92,15 @@ class Game {
     this.spawnCar('brisa', 0xc94f43, -120, 120, Math.PI / 2);
     this.spawnCar('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
     this.spawnCar('taxi', 0xf2a007, -160, 100, 0);
+    // v4: the city wakes up — waiters at two stops, a performer with a
+    // crowd at the Plaza, vendors behind their stalls, parked rides Rio
+    // can steal, and two walking groups near the start.
+    for (const stop of this.world.busStops.slice(0, 2)) this.peds.spawnWaiters(stop, 2);
+    this.peds.spawnPerformer(PERFORMER_SPOT.x, PERFORMER_SPOT.z);
+    this.peds.spawnVendors(this.world.vendorSpots);
+    for (const s of PARKED_SPOTS) this.spawnParked(s.defKey, s.color, s.x, s.z, s.heading);
+    this.peds.spawnGroup(-132, 130, 3);
+    this.peds.spawnGroup(-110, 150, 2);
 
     this.bindInput();
     addEventListener('resize', () => this.onResize());
@@ -230,12 +247,22 @@ class Game {
     this.scene.add(car.mesh);
     return car;
   }
+  // v4: a parked car Rio can steal. Unlike the three decorative cars
+  // near the start, parked cars join this.parked, so allCars() and
+  // nearestCar() see them — E next to one steals it like any traffic car.
+  spawnParked(defKey, color, x, z, heading) {
+    const car = new Car(defKey, color, x, z, heading);
+    car.kind = 'parked';
+    this.scene.add(car.mesh);
+    this.parked.push(car);
+    return car;
+  }
   removeCar(car) {
     this.scene.remove(car.mesh);
     if (this.player.inCar === car) this.player.inCar = null;
   }
   allCars() {
-    const list = [...this.traffic.cars, ...this.police.cars, ...this.police.blockerCars()];
+    const list = [...this.traffic.cars, ...this.police.cars, ...this.police.blockerCars(), ...this.parked];
     if (this.missions.rival) list.push(this.missions.rival);
     if (this.missions.tail) list.push(this.missions.tail);
     if (this.missions.targetCar) list.push(this.missions.targetCar);
@@ -284,7 +311,7 @@ class Game {
     if (this.nearShop) { this.openShop(this.nearShop); return; }
     const car = this.nearestCar(3.4);
     if (car) {
-      const stealing = car.kind === 'traffic' || car.kind === 'mission';
+      const stealing = car.kind === 'traffic' || car.kind === 'mission' || car.kind === 'parked';
       this.enterCar(car);
       if (stealing) {
         this.addWanted(1);
@@ -571,6 +598,15 @@ class Game {
 
     // Traffic + police + peds + missions + pickups + fares + packages.
     this.traffic.update(dt, p.pos, this.allCars());
+    // v4: a dwelling bus boards its waiters — once per stop, so the same
+    // bus does not keep boarding an empty bench for four seconds.
+    for (const d of this.traffic.dwelling) {
+      const car = d.car;
+      if (car.ai.boardedThisStop) continue;
+      car.ai.boardedThisStop = true;
+      const n = this.peds.boardWaiters(d.stop);
+      if (n > 0) this.notify(n + (n === 1 ? ' passenger' : ' passengers') + ' boarded the bus.');
+    }
     this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars(), p.heading);
     const danger = this.wanted > 0 ? { x: p.pos.x, z: p.pos.z, r: 25 } : null;
     this.peds.update(dt, danger, p.pos);
@@ -580,6 +616,7 @@ class Game {
     this.collectibles.update(dt, p.pos, this);
     this.combat.update(dt);
     this.particles.update(dt);
+    this.birds.update(dt, this.elapsed);
     this.audio.update();
 
     // Roadblock alert: once, when the first block goes up.
@@ -638,6 +675,17 @@ class Game {
     // Keep the city populated around the player.
     if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
     if (this.peds.peds.filter((x) => !x.dead).length < 16) this.peds.spawn(6, p.pos, 100);
+    // v4: keep the bus stops staffed — when the waiters thin out, send
+    // two more to a random stop. A stop with no waiters is just a bench.
+    if (this.peds.waiters().length < 4) {
+      const stop = this.world.busStops[Math.floor(Math.random() * this.world.busStops.length)];
+      this.peds.spawnWaiters(stop, 2);
+    }
+    // v4: a fresh walking group now and then, so the sidewalks are not
+    // only lone walkers.
+    if (this.peds.peds.filter((x) => !x.dead && x.role === 'group').length < 3 && Math.random() < dt * 0.1) {
+      this.peds.spawnGroup(p.pos.x + 20, p.pos.z + 10, 3);
+    }
 
     // Sea shimmer + camera + HUD.
     this.world.seaMaterial.uniforms.t.value = this.elapsed;
@@ -663,6 +711,7 @@ class Game {
       roadblocks: this.police.blockers.map((b) => ({ x: b.x, z: b.z, heading: b.heading })),
       mods: this.save.upgrades || { armor: 0, engine: 0, tires: 0 },
       fare: this.taxi.minimapBlip(),
+      busStops: this.world.busStops,
     });
     if (this.elapsed % 30 < dt) this.writeSave();
   }

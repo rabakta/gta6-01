@@ -1,9 +1,11 @@
-// BRISA BAY v3 — pedestrians: beach-goers and city walkers, plus the armed
+// BRISA BAY v4 — pedestrians: beach-goers and city walkers, plus the armed
 // guards missions spawn. A ped is a low-poly figure (torso, head, legs)
 // that strolls the sidewalks; danger nearby (a speeding car, gunfire, an
 // explosion) makes it flee, and a fleeing ped spreads the panic to the
 // walkers around it. v2: corpses far from the player clear first, so the
-// streets stay tidy where Rio actually is.
+// streets stay tidy where Rio actually is. v4: the crowd gets jobs —
+// joggers, walking groups, bus-stop waiters, vendors, a street performer
+// with a watching crowd, and beachgoers who stop to watch the sea.
 import * as THREE from 'three';
 import { clamp, mulberry32, pick, dist2 } from './utils.js';
 import { resolveCircleCollisions } from './city.js';
@@ -28,6 +30,14 @@ export class Ped {
     this.deadTimer = 0; // seconds since death; corpses are cleared by the manager
     this.phase = Math.random() * 6;
     this.shootTimer = 0;
+    // v4: group followers walk with their leader; watchers face their
+    // performer; waiters remember which stop they wait at; beachgoers
+    // sometimes just stand and watch the sea.
+    this.groupLeader = opts.groupLeader || null;
+    this.groupSide = opts.groupSide || 0;
+    this.performer = opts.performer || null;
+    this.stop = opts.stop || null;
+    this.pauseTimer = 0;
     // Build the figure: box torso and head, two legs that swing as it walks.
     const rng = mulberry32((x * 13 + z * 7) | 0);
     const shirt = new THREE.MeshLambertMaterial({ color: opts.shirt ?? pick(rng, SHIRTS) });
@@ -44,6 +54,14 @@ export class Ped {
     const legR = legL.clone();
     legR.position.x = 0.14;
     this.mesh.add(body, head, legL, legR);
+    // v4: a hat on some heads — caps, a sun hat, a beanie — so the crowd
+    // reads as individuals at a glance, not a clone army.
+    if (opts.hat !== false && rng() < 0.45) {
+      const hatCols = [0xd21f2b, 0xf2c230, 0x2e7d6b, 0x2b3a55, 0xe8e2d0];
+      const hat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.12, 0.42), new THREE.MeshLambertMaterial({ color: pick(rng, hatCols) }));
+      hat.position.y = 1.86;
+      this.mesh.add(hat);
+    }
     this.legs = [legL, legR];
     this.mesh.position.copy(this.pos);
     scene.add(this.mesh);
@@ -69,6 +87,50 @@ export class Ped {
       this.speed = 0;
       this.phase += dt * 2;
       this.pos.x += Math.sin(this.phase) * 0.15 * dt;
+    } else if (this.role === 'waiter' || this.role === 'vendor' || this.role === 'performer') {
+      // v4: the rooted roles stand their ground — a waiter at the stop, a
+      // vendor behind the stall, the performer holding court. A little
+      // sway so they are alive, not statues.
+      this.speed = 0;
+      this.phase += dt * 1.5;
+      this.pos.x += Math.sin(this.phase) * 0.08 * dt;
+    } else if (this.role === 'watcher') {
+      // v4: the crowd around the performer faces them and sways to the
+      // music nobody else can hear. If the performer is gone, they
+      // wander off like anyone else.
+      if (this.performer && !this.performer.dead) {
+        this.speed = 0;
+        this.heading = Math.atan2(this.performer.pos.x - this.pos.x, this.performer.pos.z - this.pos.z);
+        this.phase += dt * 1.5;
+      } else {
+        if (Math.random() < dt * 0.15) this.heading += (Math.random() - 0.5) * 1.6;
+        this.speed = this.walkSpeed;
+      }
+    } else if (this.role === 'group' && this.groupLeader && !this.groupLeader.dead) {
+      // v4: walk with the leader — same heading, same pace, a step behind
+      // and to the side. The lerp pulls the follower into its slot; the
+      // forward step below keeps pace with the leader.
+      const l = this.groupLeader;
+      this.heading = l.heading;
+      this.speed = l.speed;
+      const bx = l.pos.x - Math.sin(l.heading) * 1.1 + Math.cos(l.heading) * (this.groupSide || 0);
+      const bz = l.pos.z - Math.cos(l.heading) * 1.1 - Math.sin(l.heading) * (this.groupSide || 0);
+      this.pos.x += (bx - this.pos.x) * Math.min(1, dt * 3);
+      this.pos.z += (bz - this.pos.z) * Math.min(1, dt * 3);
+    } else if (this.role === 'jogger') {
+      // v4: a jogger runs the sidewalks at twice a walk, turning less.
+      if (Math.random() < dt * 0.08) this.heading += (Math.random() - 0.5) * 1.0;
+      this.speed = this.walkSpeed * 2.4;
+    } else if (this.role === 'beachgoer') {
+      // v4: beachgoers amble, then stop and stare at the sea for a while.
+      if (this.pauseTimer > 0) {
+        this.pauseTimer -= dt;
+        this.speed = 0;
+      } else {
+        if (Math.random() < dt * 0.15) this.heading += (Math.random() - 0.5) * 1.6;
+        this.speed = this.walkSpeed * 0.7;
+        if (Math.random() < dt * 0.05) this.pauseTimer = 3 + Math.random() * 4;
+      }
     } else {
       // Stroll: wander the sidewalks, turn at random.
       if (Math.random() < dt * 0.15) this.heading += (Math.random() - 0.5) * 1.6;
@@ -123,7 +185,7 @@ export class PedManager {
       if (onBeach) {
         const x = 214 + Math.random() * 30;
         const z = center.z + (Math.random() * 2 - 1) * radius;
-        this.peds.push(new Ped(this.scene, x, z));
+        this.peds.push(new Ped(this.scene, x, z, { role: 'beachgoer' }));
         continue;
       }
       const line = pick(mulberry32(i * 977 + 13), lines);
@@ -131,7 +193,9 @@ export class PedManager {
       const onXRoad = Math.random() < 0.5;
       const x = onXRoad ? line + 9 : along;
       const z = onXRoad ? along : line + 9;
-      this.peds.push(new Ped(this.scene, x, z));
+      // v4: about one walker in six is out for a run.
+      const role = Math.random() < 0.16 ? 'jogger' : 'walker';
+      this.peds.push(new Ped(this.scene, x, z, { role }));
     }
   }
 
@@ -141,11 +205,86 @@ export class PedManager {
   spawnGuards(positions, health = 60) {
     const guards = [];
     for (const p of positions) {
-      const g = new Ped(this.scene, p.x, p.z, { hostile: true, role: 'guard', health, shirt: 0x1d2733 });
+      const g = new Ped(this.scene, p.x, p.z, { hostile: true, role: 'guard', health, shirt: 0x1d2733, hat: false });
       guards.push(g);
       this.peds.push(g);
     }
     return guards;
+  }
+
+  // v4: a walking group — a leader plus followers a step behind. The
+  // followers carry the leader, so the group holds together for as long
+  // as the leader lives.
+  spawnGroup(x, z, size = 3) {
+    const leader = new Ped(this.scene, x, z, { role: 'group' });
+    this.peds.push(leader);
+    const group = [leader];
+    for (let i = 1; i < size; i++) {
+      const side = i % 2 === 0 ? 1.1 : -1.1;
+      const f = new Ped(this.scene, x + side, z + 1, { role: 'group', groupLeader: leader, groupSide: side });
+      this.peds.push(f);
+      group.push(f);
+    }
+    return group;
+  }
+
+  // v4: waiters at a bus stop — they stand by the bench until a bus
+  // dwells there, then board (see boardWaiters).
+  spawnWaiters(stop, count = 2) {
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const p = new Ped(this.scene, stop.waitX + (Math.random() - 0.5) * 2, stop.waitZ + 1.5 + i * 1.2, { role: 'waiter', stop });
+      this.peds.push(p);
+      out.push(p);
+    }
+    return out;
+  }
+
+  // v4: vendors behind their stalls, one ped per stall, facing the road.
+  spawnVendors(spots) {
+    const out = [];
+    for (const s of spots) {
+      const p = new Ped(this.scene, s.x, s.z + 2.2, { role: 'vendor', shirt: s.color, hat: false });
+      // Face the road: toward the city centre from the stall.
+      p.heading = Math.atan2(-s.x, -s.z);
+      this.peds.push(p);
+      out.push(p);
+    }
+    return out;
+  }
+
+  // v4: the street performer and their crowd — the performer holds the
+  // spot, four watchers ring them facing in.
+  spawnPerformer(x, z) {
+    const performer = new Ped(this.scene, x, z, { role: 'performer', shirt: 0xf2c230, hat: false });
+    this.peds.push(performer);
+    const watchers = [];
+    const ring = [[2.5, 0], [0, 2.5], [-2.5, 0], [0, -2.5]];
+    for (const [dx, dz] of ring) {
+      const w = new Ped(this.scene, x + dx, z + dz, { role: 'watcher', performer });
+      this.peds.push(w);
+      watchers.push(w);
+    }
+    return { performer, watchers };
+  }
+
+  // v4: board the waiters standing at a stop — the bus takes them.
+  // Returns how many boarded. Only waiters for that stop board, never
+  // passers-by: the role and the stop both have to match.
+  boardWaiters(stop, radius = 9) {
+    let n = 0;
+    for (const p of [...this.peds]) {
+      if (p.dead || p.role !== 'waiter' || p.stop !== stop) continue;
+      if (dist2(p.pos.x, p.pos.z, stop.waitX, stop.waitZ) > radius) continue;
+      this.remove(p);
+      n++;
+    }
+    return n;
+  }
+
+  // Waiters currently standing at any stop.
+  waiters() {
+    return this.peds.filter((p) => !p.dead && p.role === 'waiter');
   }
 
   update(dt, danger, playerPos = null) {

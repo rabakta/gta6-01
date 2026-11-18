@@ -1,10 +1,12 @@
-// BRISA BAY v3 — screenshot staging. `?shot=menu|foot|chase|mission`
+// BRISA BAY v4 — screenshot staging. `?shot=menu|foot|chase|mission`
 // drops the game straight into a composed scene so a screenshot shows the
 // systems at their best, with no menu in the way. `?shot=garage` opens the
 // garage shop for a verification shot. v3 adds `?shot=race` (the Grand
 // Prix, the cover shot), `?shot=taxi` (a fare offer, passenger and amber
 // beacon in frame) and `?shot=packages` (Rio on foot beside a gold
-// collectible parcel). Used only for the entry's screenshots and for
+// collectible parcel). v4 adds `?shot=street` (the new cover: Rio on a
+// Moto weaving toward a dwelling bus, waiters on the bench, the city
+// busy around him). Used only for the entry's screenshots and for
 // testing the new systems.
 export function shotParam() {
   const q = new URLSearchParams(location.search);
@@ -212,6 +214,48 @@ export function stageShot(game, shot) {
     g.traffic.spawn(6, { x: 0, z: 60 }, 90);
     g.peds.spawn(8, { x: 0, z: 30 }, 60);
     g.player.camDist = 8;
+  } else if (shot === 'street') {
+    // v4 cover shot: the city at its busiest. Rio on a Moto 250 on the
+    // central east-west road (z=0), heading west toward a Sol Bus
+    // dwelling at the West Plaza stop with waiters on the bench, a second
+    // bike weaving in traffic, joggers and a walking group on the
+    // sidewalks. (Same ~0.15s rule as the chase shot: stage it, don't
+    // drive it.)
+    const car = g.spawnCar('moto', 0xd21f2b, 0, 0, -Math.PI / 2);
+    g.enterCar(car);
+    car.speed = 16;
+    g.player.pos.copy(car.pos); // see chase: staging reads player.pos
+    g.player.heading = car.heading;
+    g.player.camYaw = car.heading + Math.PI; // see chase: no mid-swing camera
+    g.keys.KeyW = true;
+    // The bus: dwelling at the West Plaza stop, 60 m ahead, waiters
+    // standing — boardedThisStop starts true so the shot keeps them.
+    const stop = g.world.busStops.find((s) => s.name === 'West Plaza');
+    g.traffic.spawnBusAt(stop, 6);
+    g.peds.spawnWaiters(stop, 3);
+    // A second bike ahead, already weaving, plus the usual traffic and
+    // a walking group on the sidewalk. Spawn first, clear the lane last:
+    // a fresh traffic car can land right in the Moto's path.
+    const bike2 = g.spawnCar('moto', 0x2b3a55, -25, 0, -Math.PI / 2);
+    bike2.kind = 'traffic';
+    bike2.ai = { axis: 'x', dir: -1, targetSpeed: 14, wait: 0, weave: true, weavePhase: 1.2 };
+    g.traffic.cars.push(bike2);
+    g.traffic.spawn(6, { x: -30, z: 0 }, 80);
+    g.peds.spawn(10, { x: -10, z: 0 }, 70);
+    g.peds.spawnGroup(-20, 9, 3);
+    const sfx = Math.sin(car.heading), sfz = Math.cos(car.heading);
+    for (const c of [...g.traffic.cars]) {
+      if (c === bike2) continue;
+      const dx = c.pos.x - car.pos.x, dz = c.pos.z - car.pos.z;
+      const ahead = dx * sfx + dz * sfz;
+      const side = Math.abs(dx * sfz - dz * sfx);
+      // The bus sits 60 m ahead — the 55 m cut keeps it in frame.
+      if (ahead > 0 && ahead < 55 && side < 4) {
+        g.scene.remove(c.mesh);
+        g.traffic.cars = g.traffic.cars.filter((x) => x !== c);
+      }
+    }
+    g.player.camDist = 11;
   }
   // Let the world settle for a beat so the first rendered frame is composed.
   g.warmupFrames = 30;

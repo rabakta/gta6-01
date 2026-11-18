@@ -7,7 +7,7 @@
 // the collectible packages and taxi fares place themselves on the road
 // lines and the open beach this city builds, so no map change was needed.
 import * as THREE from 'three';
-import { CITY, PALETTE, SHOPS } from './config.js';
+import { CITY, PALETTE, SHOPS, BUS_STOPS, VENDORS } from './config.js';
 import { mulberry32, pick } from './utils.js';
 import { facadeTexture, roadTexture, pavementTexture, sandTexture, signTexture, billboardTexture, roofTexture, glowTexture, neonSignTexture } from './textures.js';
 
@@ -52,6 +52,9 @@ export function buildCity(scene) {
     shops: [],
     palms: [],
     lighthouseBeam: null,
+    // v4: bus stops and vendor stalls, built below from config.
+    busStops: [],
+    vendorSpots: [],
   };
 
   // Sky: warm sunset gradient dome + fog so the far sea melts into the sun.
@@ -459,6 +462,61 @@ export function buildCity(scene) {
   porchGlow.scale.setScalar(4);
   scene.add(porchGlow);
   colliders.push({ minX: sh.x - 6, maxX: sh.x + 6, minZ: sh.z - 5, maxZ: sh.z + 5 });
+
+  // v4: bus stops — a sign board, a bench and a pole at each stop, so a
+  // waiting passenger reads from down the street. The sign faces the
+  // road; the bench sits 9 m off the line, where the waiters stand.
+  for (const stop of BUS_STOPS) {
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.5, 2.2),
+      new THREE.MeshBasicMaterial({ map: signTexture('BUS', '#1d2733', '#4fd8ff') }),
+    );
+    sign.position.set(stop.x + 9, 3.4, stop.z);
+    sign.rotation.y = Math.atan2(-(stop.x + 9), -stop.z);
+    scene.add(sign);
+    const stopPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 3.4, 6), deckMat);
+    stopPole.position.set(stop.x + 9, 1.7, stop.z);
+    scene.add(stopPole);
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 0.9), pierMat);
+    bench.position.set(stop.x + 9, 0.6, stop.z + 1.6);
+    bench.castShadow = true;
+    scene.add(bench);
+    for (const bx of [-1.1, 1.1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.8), deckMat);
+      leg.position.set(stop.x + 9 + bx, 0.3, stop.z + 1.6);
+      scene.add(leg);
+    }
+    world.busStops.push({ ...stop, waitX: stop.x + 9, waitZ: stop.z });
+  }
+
+  // v4: vendor stalls — a counter, a bright striped canopy and a name
+  // board. The stall itself is a small collider so cars cannot drive
+  // through the flowers; the vendor ped stands behind it.
+  for (const v of VENDORS) {
+    const counter = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x8a6b46 }));
+    counter.scale.set(3.2, 1.1, 1.6);
+    counter.position.set(v.x, 0.55, v.z);
+    counter.castShadow = true;
+    scene.add(counter);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.18, 2.4), new THREE.MeshLambertMaterial({ color: v.color }));
+    canopy.position.set(v.x, 2.6, v.z);
+    canopy.castShadow = true;
+    scene.add(canopy);
+    for (const px of [-1.7, 1.7]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), deckMat);
+      post.position.set(v.x + px, 1.3, v.z);
+      scene.add(post);
+    }
+    const vSign = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 1.1),
+      new THREE.MeshBasicMaterial({ map: signTexture(v.name, '#1d2733', '#ffd98a') }),
+    );
+    vSign.position.set(v.x, 3.4, v.z);
+    vSign.rotation.y = Math.atan2(-v.x, -v.z);
+    scene.add(vSign);
+    colliders.push({ minX: v.x - 1.7, maxX: v.x + 1.7, minZ: v.z - 0.9, maxZ: v.z + 0.9 });
+    world.vendorSpots.push({ ...v });
+  }
 
   return world;
 }

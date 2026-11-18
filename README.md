@@ -11,6 +11,23 @@ with traffic and pedestrians, cars to steal, a five-star wanted level with
 police cars and a helicopter, twelve story missions, combat, shops, a safehouse
 garage, a synth radio, and a HUD with a minimap.
 
+## What's new in v4
+
+- **Motorbikes and city buses:** a Moto 250 that weaves between lanes and
+  leans into its turns, and a slow Sol Bus that stops at bus stops. Both are
+  stealable and drivable like any car.
+- **Bus stops with boarding passengers:** four stops around the city, each
+  with a sign, a bench and waiting peds. When a bus dwells there, the
+  waiters board and the stop refills with new ones. Stops show on the
+  minimap as cyan squares.
+- **A crowd with jobs:** joggers on the sidewalks, walking groups that hold
+  together, beachgoers who stop to watch the sea, vendors behind flower,
+  taco and fruit stalls, and a street performer at the Plaza ringed by a
+  watching crowd. Hats on some heads, so the crowd reads as people.
+- **Birds:** two gull flocks circling the lighthouse and the pier.
+- **Parked cars you can steal:** eight fixed rides around the city — sedans,
+  a coupe, a van, a taxi, a Furia GT and two Motos. Walk up and press E.
+
 ## What's new in v3
 
 - **Mission 11 — Midnight Grand Prix:** a checkpoint street race around the
@@ -53,10 +70,10 @@ P pause · mouse drag orbits the camera.
 - `game/index.html` — the page and the HUD.
 - `game/src/` — the game, one file per system: `city`, `vehicles`, `player`,
   `pedestrians`, `combat`, `missions`, `hud`, `audio`, `save`, `shots`,
-  `textures`, `pickups`, `taxi`, `collectibles`, `config`, `utils`.
+  `textures`, `pickups`, `taxi`, `collectibles`, `birds`, `config`, `utils`.
 - `game/vendor/three.module.min.js` — three.js r160, vendored.
 - `screenshots/` — four real renders of the game, staged with `?shot=`
-  (race, chase, taxi, packages).
+  (street, chase, taxi, race).
 
 ## License
 

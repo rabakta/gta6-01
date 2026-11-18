@@ -30,8 +30,67 @@ export function makeCarMesh(defKey, colorHex) {
   const glassMat = new THREE.MeshPhongMaterial({ color: 0x9fc4d8, shininess: 120, specular: 0x888888 });
   const isTruck = defKey === 'caminar';
   const isVan = defKey === 'carguero';
-  const longBody = isTruck || isVan;
-  const bodyLen = longBody ? 5.4 : 4.4;
+  const isBike = defKey === 'moto';
+  const isBus = defKey === 'bus';
+  const longBody = isTruck || isVan || isBus;
+  const bodyLen = isBus ? 7.6 : isBike ? 2.2 : longBody ? 5.4 : 4.4;
+
+  // v4: a bike is a narrow frame with a rider, not a car body — build it
+  // here and return early, before the car-only parts (cabin, plate,
+  // exhaust) below.
+  if (isBike) {
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, bodyLen), bodyMat);
+    frame.position.y = 0.55;
+    frame.castShadow = true;
+    g.add(frame);
+    // The respray shop repaints this mesh by reference.
+    g.userData.body = frame;
+    const tank = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.3, 0.7), glassMat);
+    tank.position.set(0, 0.85, 0.5);
+    g.add(tank);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.7), darkMat);
+    seat.position.set(0, 0.78, -0.5);
+    g.add(seat);
+    // Rider: leaning torso, coloured helmet, arms to the bars.
+    const riderMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.3), riderMat);
+    torso.position.set(0, 1.15, -0.35);
+    torso.rotation.x = 0.35;
+    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.36), new THREE.MeshLambertMaterial({ color: colorHex }));
+    helmet.position.set(0, 1.6, -0.15);
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.6), riderMat);
+    armL.position.set(-0.28, 1.15, 0.25);
+    const armR = armL.clone();
+    armR.position.x = 0.28;
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.5, 0.14), riderMat);
+    legL.position.set(-0.25, 0.6, -0.3);
+    const legR = legL.clone();
+    legR.position.x = 0.25;
+    g.add(torso, helmet, armL, armR, legL, legR);
+    // Two wheels in line, front and rear.
+    const bikeWheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.18, 10);
+    const bikeWheelMat = new THREE.MeshLambertMaterial({ color: 0x0c0d10 });
+    const bikeWheels = [];
+    for (const z of [-0.85, 0.85]) {
+      const w = new THREE.Mesh(bikeWheelGeo, bikeWheelMat);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(0, 0.36, z);
+      g.add(w);
+      bikeWheels.push(w);
+    }
+    g.userData.wheels = bikeWheels;
+    // Single headlight on the nose, one taillight at the rear.
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.06), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
+    head.position.set(0, 0.6, 1.12);
+    g.add(head);
+    const tm = new THREE.MeshBasicMaterial({ color: 0x8a1616 });
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.06), tm);
+    tail.position.set(0, 0.6, -1.12);
+    g.add(tail);
+    g.userData.tailMats = [tm];
+    g.userData.length = bodyLen;
+    return g;
+  }
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, bodyLen), bodyMat);
   body.position.y = 0.55;
@@ -43,6 +102,17 @@ export function makeCarMesh(defKey, colorHex) {
   cabin.position.set(0, 1.1, isTruck ? 1.6 : -0.15);
   cabin.castShadow = true;
   g.add(cabin);
+  if (isBus) {
+    // A bus reads as a bus by its window band: a long glass strip down
+    // both sides, plus an amber destination sign over the windshield.
+    const band = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.5, 6.4), glassMat);
+    band.position.set(0, 1.0, -0.3);
+    band.castShadow = true;
+    g.add(band);
+    const dest = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.4, 0.08), new THREE.MeshBasicMaterial({ color: 0xf2a007 }));
+    dest.position.set(0, 1.35, 3.82);
+    g.add(dest);
+  }
   if (isVan) {
     const cargo = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.1, 2.6), bodyMat);
     cargo.position.set(0, 1.15, -1.1);
@@ -52,7 +122,7 @@ export function makeCarMesh(defKey, colorHex) {
   // Wheels — kept in userData so Sport Tyres can widen them visibly.
   const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 10);
   const wheelMat = new THREE.MeshLambertMaterial({ color: 0x0c0d10 });
-  const wheelZ = longBody ? [-1.7, 1.7] : [-1.45, 1.45];
+  const wheelZ = isBus ? [-2.6, 2.6] : longBody ? [-1.7, 1.7] : [-1.45, 1.45];
   const wheels = [];
   for (const z of wheelZ) {
     for (const x of [-0.95, 0.95]) {
@@ -82,7 +152,7 @@ export function makeCarMesh(defKey, colorHex) {
   // shining out of the boot.
   const headMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
   const tailMats = [];
-  const lightZ = longBody ? 2.72 : 2.22;
+  const lightZ = isBus ? 3.82 : longBody ? 2.72 : 2.22;
   for (const x of [-0.6, 0.6]) {
     const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.14, 0.06), headMat);
     h.position.set(x, 0.6, lightZ);
@@ -209,8 +279,10 @@ export class Car {
   syncMesh() {
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.heading;
-    // Lean into the turn, like a car body does.
-    this.mesh.rotation.z = -this.steer * clamp(Math.abs(this.speed) / 20, 0, 1) * 0.05;
+    // Lean into the turn, like a car body does. A bike leans hard — seven
+    // times the car lean — so a weaving Moto reads as a bike, not a car.
+    const lean = this.defKey === 'moto' ? 0.35 : 0.05;
+    this.mesh.rotation.z = -this.steer * clamp(Math.abs(this.speed) / 20, 0, 1) * lean;
   }
 
   damage(amount) {
@@ -236,7 +308,9 @@ export class TrafficManager {
     this.world = world;
     this.rng = rng;
     this.cars = [];
-    this.keys = ['brisa', 'vento', 'carguero', 'caminar', 'taxi'];
+    // v4: bikes are common, buses rare — repeats weight the draw.
+    this.keys = ['brisa', 'brisa', 'vento', 'vento', 'carguero', 'caminar', 'taxi', 'moto', 'moto', 'bus'];
+    this.dwelling = []; // { car, stop } — buses stopped at a stop this frame
   }
 
   spawn(count, center, radius) {
@@ -256,7 +330,22 @@ export class TrafficManager {
       const heading = axis === 'x' ? (dir > 0 ? Math.PI / 2 : -Math.PI / 2) : (dir > 0 ? 0 : Math.PI);
       const car = new Car(key, color, x, z, heading);
       car.kind = 'traffic';
-      car.ai = { axis, dir, targetSpeed: 7 + this.rng() * 4, wait: 0 };
+      // v4: bikes weave, buses crawl and stop at bus stops.
+      const ai = { axis, dir, targetSpeed: 7 + this.rng() * 4, wait: 0 };
+      if (key === 'moto') {
+        ai.weave = true;
+        ai.weavePhase = this.rng() * Math.PI * 2;
+        ai.targetSpeed = 12 + this.rng() * 5;
+      }
+      if (key === 'bus') {
+        ai.bus = true;
+        ai.targetSpeed = 5 + this.rng() * 1.5;
+        ai.dwell = 0;
+        ai.stop = null;
+        ai.lastStop = null;
+        ai.boardedThisStop = false;
+      }
+      car.ai = ai;
       this.scene.add(car.mesh);
       this.cars.push(car);
     }
@@ -264,10 +353,35 @@ export class TrafficManager {
 
   update(dt, playerPos, allCars) {
     const lines = this.world.roads;
+    this.dwelling = [];
     for (const car of this.cars) {
       if (car.dead) continue;
       const ai = car.ai;
       if (ai.wait > 0) { ai.wait -= dt; car.drive(dt, 0, 0, this.world.colliders); continue; }
+      // v4: a bus at a stop dwells — doors open, passengers board.
+      // The dwell list is rebuilt every frame, so the game can board
+      // waiters exactly once per stop (see boardedThisStop).
+      if (ai.bus) {
+        if (ai.dwell > 0) {
+          ai.dwell -= dt;
+          car.drive(dt, 0, 0, this.world.colliders);
+          this.dwelling.push({ car, stop: ai.stop });
+          continue;
+        }
+        const stop = this.nearestStop(car.pos);
+        if (stop && stop !== ai.lastStop) {
+          ai.dwell = 4;
+          ai.stop = stop;
+          ai.lastStop = stop;
+          ai.boardedThisStop = false;
+          car.drive(dt, 0, 0, this.world.colliders);
+          this.dwelling.push({ car, stop });
+          continue;
+        }
+        // Far enough from the last stop that it may stop there again on
+        // the next pass — otherwise a bus would only ever stop once.
+        if (ai.lastStop && dist2(car.pos.x, car.pos.z, ai.lastStop.x, ai.lastStop.z) > 30) ai.lastStop = null;
+      }
       // Car ahead on the same lane? Brake.
       let blocked = false;
       for (const other of allCars) {
@@ -285,7 +399,14 @@ export class TrafficManager {
         if (ahead > 0 && ahead < 8 && side < 2.4) blocked = true;
       }
       const throttle = blocked ? -0.4 : (car.speed < ai.targetSpeed ? 0.6 : 0.1);
-      car.drive(dt, throttle, 0, this.world.colliders);
+      // v4: a bike weaves — a slow sine on the steering, so it snakes
+      // between lanes instead of cruising dead straight like a car.
+      let steer = 0;
+      if (ai.weave) {
+        ai.weavePhase += dt * 1.4;
+        steer = Math.sin(ai.weavePhase) * 0.45;
+      }
+      car.drive(dt, throttle, steer, this.world.colliders);
       // At an intersection, sometimes turn onto the crossing road.
       const onLine = ai.axis === 'x'
         ? Math.abs(car.pos.z - nearestRoadCoord(car.pos.z)) < 1.2
@@ -303,6 +424,30 @@ export class TrafficManager {
         car.pos.z = clamp(car.pos.z, -200, 200);
       }
     }
+  }
+
+  // The closest bus stop to a point, within 8 m — the distance a bus
+  // driving its route gets to a stop it passes. Null when none is near.
+  nearestStop(pos) {
+    const stops = this.world.busStops || [];
+    let best = null, bd = Infinity;
+    for (const s of stops) {
+      const d = dist2(pos.x, pos.z, s.x, s.z);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return bd < 8 ? best : null;
+  }
+
+  // Staging helper: put a bus dwelling at a stop, for screenshots and
+  // tests. `dwellSeconds` keeps it parked through the capture, and
+  // boardedThisStop starts true so the staged waiters stay standing.
+  spawnBusAt(stop, dwellSeconds = 6) {
+    const car = new Car('bus', 0x2e7d6b, stop.x, stop.z, Math.PI / 2);
+    car.kind = 'traffic';
+    car.ai = { axis: 'x', dir: 1, targetSpeed: 6, wait: 0, bus: true, dwell: dwellSeconds, stop, lastStop: stop, boardedThisStop: true };
+    this.scene.add(car.mesh);
+    this.cars.push(car);
+    return car;
   }
 }
 

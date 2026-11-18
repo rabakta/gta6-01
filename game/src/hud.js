@@ -1,9 +1,10 @@
-// BRISA BAY v3 — HUD: DOM readouts (cash, health, stars, weapon, speed,
+// BRISA BAY v4 — HUD: DOM readouts (cash, health, stars, weapon, speed,
 // radio, objective, toasts, menus) and the 2D minimap canvas with live
 // blips for the player, traffic, police, the helicopter, the mission
 // marker, world pickups, police roadblocks and taxi fares. v3 adds the
-// amber fare blip (a $ in a gold circle). v2 also shows the garage
-// upgrade levels under the vitals, so a tuned ride is always visible.
+// amber fare blip (a $ in a gold circle). v4 adds cyan bus-stop squares.
+// v2 also shows the garage upgrade levels under the vitals, so a tuned
+// ride is always visible.
 import { CITY, WANTED_MAX } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
 
@@ -50,7 +51,7 @@ export class HUD {
   update(dt, state) {
     // state: { cash, health, armor, wanted, weaponName, ammo, speedKmh,
     //   radio, objective, clockSec, player, cars, police, heliPos,
-    //   markerPos, shops, pickups, roadblocks, mods, fare }
+    //   markerPos, shops, pickups, roadblocks, mods, fare, busStops }
     this.el.cash.textContent = fmtMoney(state.cash);
     this.el['health-fill'].style.width = Math.max(0, state.health) + '%';
     this.el['health-num'].textContent = Math.max(0, Math.round(state.health));
@@ -124,6 +125,12 @@ export class HUD {
     const [hx, hz] = toMap(sh.x, sh.z);
     ctx.fillStyle = '#ffd34d';
     ctx.beginPath(); ctx.arc(hx, hz, 5, 0, Math.PI * 2); ctx.fill();
+    // v4: bus stops — cyan squares, so a rider can find the next stop.
+    ctx.fillStyle = '#4fd8ff';
+    for (const s of this.world.busStops || []) {
+      const [x, z] = toMap(s.x, s.z);
+      ctx.fillRect(x - 3, z - 3, 6, 6);
+    }
     // v2: world pickups — green crosses for health, blue diamonds for armour.
     for (const p of state.pickups || []) {
       const [x, z] = toMap(p.x, p.z);

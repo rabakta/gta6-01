@@ -2,7 +2,9 @@
 // Every number the game balances on lives here, so a tune is one edit and
 // no system hides a magic number of its own. v3 adds two story chapters
 // (a checkpoint race and the finale), the taxi fare system and the 20
-// collectible packages.
+// collectible packages. v4 adds motorbikes and city buses, bus stops,
+// street vendors, parked cars Rio can steal, birds and a street
+// performer — the city gets busier.
 
 // ---------------------------------------------------------------------------
 // The city: a square grid of blocks. Roads run on the grid lines; the beach
@@ -61,6 +63,9 @@ export const CAR_DEFS = {
   carguero: { name: 'Carguero', label: 'Carguero Van',   topSpeed: 22, accel: 10, brake: 26, handling: 0.4,  colors: [0xe8e2d0, 0x7a8894] },
   caminar:  { name: 'Caminar',  label: 'Caminar Truck',  topSpeed: 24, accel: 11, brake: 28, handling: 0.45, colors: [0x9c6b3c, 0x4a5d3a] },
   taxi:     { name: 'Taxi Sol', label: 'Taxi Sol',       topSpeed: 28, accel: 14, brake: 31, handling: 0.6,  colors: [0xf2a007] },
+  // v4: the city gets busier — a nimble bike and a slow city bus.
+  moto:     { name: 'Moto',    label: 'Moto 250',       topSpeed: 34, accel: 17, brake: 34, handling: 0.85, colors: [0xd21f2b, 0x2b3a55, 0xf2c230] },
+  bus:      { name: 'Bus',     label: 'Sol Bus',        topSpeed: 18, accel: 8,  brake: 22, handling: 0.3,  colors: [0x2e7d6b, 0xd9a441, 0x4a6fa5] },
   police:   { name: 'Interceptor', label: 'BCPD Interceptor', topSpeed: 36, accel: 20, brake: 38, handling: 0.9, colors: [0x1d2733] },
 };
 
@@ -228,3 +233,49 @@ export const COLLECTIBLES = [
   { x: -60, z: -150, name: 'Lookout car park' },
   { x: 150, z: 120, name: 'Beachfront apartments' },
 ];
+
+// ---------------------------------------------------------------------------
+// v4 additions: the city gets busier.
+// ---------------------------------------------------------------------------
+
+// Bus stops: each sits on an intersection (both coordinates on road
+// lines) so a bus driving its route passes straight through it. A
+// waiting ped stands 9 m off the road line, on the sidewalk.
+export const BUS_STOPS = [
+  { x: 0, z: 60, name: 'Plaza North' },
+  { x: -60, z: 0, name: 'West Plaza' },
+  { x: 120, z: -60, name: 'North Market' },
+  { x: 60, z: 120, name: 'Beachfront South' },
+];
+// Where a waiting ped stands, relative to the stop's road point.
+export const BUS_STOP_WAIT = { dx: 9, dz: 0 };
+
+// Street vendors: fixed stalls on the sidewalk (9 m off a road line).
+// The ped behind the stall never leaves it — unless something scares them.
+export const VENDORS = [
+  { x: 9, z: 30, name: 'FLOWERS', color: 0xd98ab0 },
+  { x: -51, z: -90, name: 'TACOS', color: 0xf2a007 },
+  { x: 129, z: 90, name: 'FRUIT', color: 0x5a7d5a },
+];
+
+// Parked cars Rio can steal: fixed spots on road lines, varied rides.
+export const PARKED_SPOTS = [
+  { defKey: 'brisa', color: 0x5a7d5a, x: -60, z: 30, heading: Math.PI / 2 },
+  { defKey: 'vento', color: 0x8e2f32, x: 60, z: -30, heading: -Math.PI / 2 },
+  { defKey: 'moto', color: 0xd21f2b, x: 0, z: 90, heading: 0 },
+  { defKey: 'taxi', color: 0xf2a007, x: -120, z: -30, heading: Math.PI },
+  { defKey: 'carguero', color: 0x7a8894, x: 120, z: 30, heading: 0 },
+  { defKey: 'furia', color: 0x20242a, x: 30, z: 180, heading: Math.PI / 2 },
+  { defKey: 'brisa', color: 0xc94f43, x: -30, z: -120, heading: -Math.PI / 2 },
+  { defKey: 'moto', color: 0x2b3a55, x: 180, z: 90, heading: Math.PI },
+];
+
+// Birds: flocks circling the lighthouse and the pier. Each flock is an
+// anchor point, a count and an orbit radius band.
+export const BIRD_FLOCKS = [
+  { x: 246, z: 100, count: 5, radius: 24, height: 34 },
+  { x: 274, z: -40, count: 4, radius: 18, height: 28 },
+];
+
+// The street performer holds court at the Plaza, ringed by watchers.
+export const PERFORMER_SPOT = { x: 12, z: 10 };
