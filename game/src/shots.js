@@ -1,79 +1,59 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
-
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
-  }
-  return Infinity;
+// BRISA BAY — screenshot staging. `?shot=menu|foot|chase|mission` drops the
+// game straight into a composed scene so a screenshot shows the systems at
+// their best, with no menu in the way. Used only for the entry's screenshots.
+export function shotParam() {
+  const q = new URLSearchParams(location.search);
+  return q.get('shot');
 }
 
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
+// Place the game into a staged scene. Called once after boot, before the
+// first frame the screenshot captures.
+export function stageShot(game, shot) {
+  const g = game;
+  if (shot === 'menu') {
+    g.state = 'menu';
+    g.hud.showMenu('start', 'BRISA BAY', g.startMenuBody(), 'Press ENTER to start');
+    return;
   }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
+  // All gameplay shots skip the menu.
+  g.state = 'playing';
+  g.hud.hideMenu();
+  g.audio.ensure();
+  if (shot === 'foot') {
+    // Rio on foot downtown, traffic and pedestrians around him.
+    g.player.pos.set(-30, 0, 30);
+    g.player.heading = Math.PI * 0.75;
+    g.player.camYaw = Math.PI * 0.75 + Math.PI;
+    g.traffic.spawn(10, { x: -30, z: 30 }, 120);
+    g.peds.spawn(14, { x: -30, z: 30 }, 90);
+    g.missions.startMission(0);
+    g.player.camDist = 8;
+  } else if (shot === 'chase') {
+    // Driving fast with a 3-star wanted level: two BCPD cars and the heli.
+    const car = g.spawnCar('furia', 0xf2c230, -60, 60, Math.PI / 2);
+    g.enterCar(car);
+    car.speed = 24;
+    g.setWanted(3);
+    g.police.update(0.1, 3, g.player.pos, true, g.allCars());
+    g.police.update(0.1, 3, g.player.pos, true, g.allCars());
+    g.traffic.spawn(8, { x: -60, z: 60 }, 130);
+    g.peds.spawn(8, { x: -60, z: 60 }, 80);
+    g.missions.startMission(5);
+    g.player.camDist = 11;
+  } else if (shot === 'mission') {
+    // Mission 3 in progress: package run at the docks, two stars, guards.
+    g.missions.startMission(2);
+    g.missions.stepIndex = 1; // the collect step
+    g.missions.beginStep();
+    g.player.pos.set(150, 0, -150);
+    g.player.heading = Math.PI / 2;
+    g.player.camYaw = Math.PI / 2 + Math.PI;
+    g.setWanted(2);
+    g.police.update(0.1, 2, g.player.pos, false, g.allCars());
+    g.traffic.spawn(6, { x: 150, z: -150 }, 110);
+    g.peds.spawn(6, { x: 150, z: -150 }, 70);
+    g.player.camDist = 9;
   }
-  return best;
-}
-
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
-  }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
-  }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+  // Let the world settle for a beat so the first rendered frame is composed.
+  g.warmupFrames = 30;
 }
