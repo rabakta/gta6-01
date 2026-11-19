@@ -16,6 +16,8 @@ export function defaultSave() {
     weapons: { fists: { owned: true, ammo: Infinity } },
     currentWeapon: 'fists',
     armor: 0,
+    // Settings: pause-menu volume sliders, 0..1 each.
+    settings: { volume: 0.5, radio: 0.8 },
     // Garage upgrades: each 0..2 (see UPGRADES in config.js).
     upgrades: { armor: 0, engine: 0, tires: 0 },
     ownedCars: [],
@@ -45,6 +47,10 @@ export function sanitizeSave(raw) {
     clean.missionIndex = Math.max(0, Math.min(MISSION_META.length, Math.floor(raw.missionIndex)));
   }
   if (Number.isFinite(raw.armor)) clean.armor = Math.max(0, Math.min(100, raw.armor));
+  if (typeof raw.settings === 'object' && raw.settings !== null) {
+    if (Number.isFinite(raw.settings.volume)) clean.settings.volume = Math.min(1, Math.max(0, raw.settings.volume));
+    if (Number.isFinite(raw.settings.radio)) clean.settings.radio = Math.min(1, Math.max(0, raw.settings.radio));
+  }
   if (typeof raw.upgrades === 'object' && raw.upgrades !== null) {
     for (const key of ['armor', 'engine', 'tires']) {
       if (Number.isFinite(raw.upgrades[key])) {

@@ -10,6 +10,10 @@ import { RADIO_STATIONS } from './config.js';
 
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
+export function clampVolume(v) {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.5;
+}
+
 export class AudioEngine {
   constructor() {
     this.ctx = null;
@@ -17,6 +21,9 @@ export class AudioEngine {
     this.station = 0;
     this.radioOn = true;
     this.muted = false;
+    this.volume = 0.5; // master, 0..1 (pause-menu slider)
+    this.radioVol = 0.8; // radio bus, 0..1 (pause-menu slider)
+    this.radioGain = null;
     this.step = 0;
     this.nextStepTime = 0;
     this.engineOsc = null;
@@ -34,8 +41,11 @@ export class AudioEngine {
       const AC = window.AudioContext || window.webkitAudioContext;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 0.5;
+      this.master.gain.value = this.muted ? 0 : this.volume;
       this.master.connect(this.ctx.destination);
+      this.radioGain = this.ctx.createGain();
+      this.radioGain.gain.value = this.radioVol;
+      this.radioGain.connect(this.master);
       this.started = true;
       this.nextStepTime = this.ctx.currentTime + 0.1;
     } catch (e) {
@@ -49,7 +59,18 @@ export class AudioEngine {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.5;
+    if (this.master) this.master.gain.value = m ? 0 : this.volume;
+  }
+
+  // Volume sliders (0..1, clamped): master drives everything, the radio
+  // bus only the sequencer, so music can sit under the SFX.
+  setVolume(v) {
+    this.volume = clampVolume(v);
+    if (this.master && !this.muted) this.master.gain.value = this.volume;
+  }
+  setRadioVolume(v) {
+    this.radioVol = clampVolume(v);
+    if (this.radioGain) this.radioGain.gain.value = this.radioVol;
   }
 
   setStation(i) {
@@ -84,21 +105,21 @@ export class AudioEngine {
     // Bass on beats 0, 4, 8, 12... walking the bass pattern.
     if (step % 4 === 0) {
       const note = st.root - 12 + st.bass[(step / 4 | 0) % st.bass.length];
-      this.tone(midiToFreq(note), t, stepDur * 1.8, 'triangle', 0.2);
+      this.tone(midiToFreq(note), t, stepDur * 1.8, 'triangle', 0.2, this.radioGain);
     }
     // Lead: a sparse pentatonic wander, seeded by the step number.
     if (step % 2 === 0 && ((step * 2654435761) >>> 8) % 5 < 2) {
       const deg = (step * 7 + 3) % scale.length;
       const note = st.root + 12 + scale[deg];
-      this.tone(midiToFreq(note), t, stepDur * 0.9, 'sine', 0.07);
+      this.tone(midiToFreq(note), t, stepDur * 0.9, 'sine', 0.07, this.radioGain);
     }
     // Snare crack on beats 4 and 12 of the 16-step bar.
-    if (step % 16 === 4 || step % 16 === 12) this.noise(t, 0.09, 0.12, 1800);
+    if (step % 16 === 4 || step % 16 === 12) this.noise(t, 0.09, 0.12, 1800, this.radioGain);
     // Hat tick on the off-beats.
-    if (step % 2 === 1) this.noise(t, 0.03, 0.05, 6000);
+    if (step % 2 === 1) this.noise(t, 0.03, 0.05, 6000, this.radioGain);
   }
 
-  tone(freq, t, dur, type, vol) {
+  tone(freq, t, dur, type, vol, dest) {
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
     o.type = type;
@@ -106,12 +127,12 @@ export class AudioEngine {
     g.gain.setValueAtTime(vol, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g);
-    g.connect(this.master);
+    g.connect(dest || this.master);
     o.start(t);
     o.stop(t + dur + 0.05);
   }
 
-  noise(t, dur, vol, cutoff) {
+  noise(t, dur, vol, cutoff, dest) {
     const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const data = buf.getChannelData(0);
@@ -125,7 +146,7 @@ export class AudioEngine {
     g.gain.value = vol;
     src.connect(f);
     f.connect(g);
-    g.connect(this.master);
+    g.connect(dest || this.master);
     src.start(t);
   }
 

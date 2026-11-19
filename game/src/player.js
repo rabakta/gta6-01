@@ -1,8 +1,8 @@
-// BRISA BAY — Rio on foot: third-person movement, camera rig, entering cars.
-// The camera orbits with the mouse (drag) and settles behind Rio when he
-// runs; driving adds a walk bob on foot and a speed FOV kick in a car. The
-// FOV kick reads the car's effective top speed, so an engine-tuned ride
-// still rushes the world at the right moment.
+// BRISA BAY — Rio on foot: third-person movement, camera rig, entering
+// cars. The camera orbits with the mouse (drag) and settles behind Rio
+// when he runs; driving adds a walk bob on foot and a speed FOV kick in
+// a car. v8: SPACE (or the touch JUMP button) hops — a small vertical hop
+// with gravity, purely visual: collisions stay on the ground plane.
 import * as THREE from 'three';
 import { clamp, damp, angleLerp, lerp } from './utils.js';
 import { resolveCircleCollisions } from './city.js';
@@ -20,6 +20,8 @@ export class Player {
     this.camPitch = 0.32;
     this.camDist = 7.5;
     this.walkPhase = 0;
+    this.jumpY = 0; // hop height above the ground, 0 when grounded
+    this.jumpV = 0;
     // Rio: teal shirt, jeans, dark hair. Box-built, arms and legs swing.
     const skin = new THREE.MeshLambertMaterial({ color: 0xc98d64 });
     const shirt = new THREE.MeshLambertMaterial({ color: 0x2e7d6b });
@@ -48,6 +50,14 @@ export class Player {
     scene.add(this.mesh);
   }
 
+  // Hop: only from the ground, never from a car. The hop is visual —
+  // Rio's feet leave the ground for ~0.7 s; his collisions and his
+  // position on the map never leave the ground plane.
+  jump() {
+    if (this.jumpY > 0 || this.inCar) return;
+    this.jumpV = 7.5;
+  }
+
   // Move on foot. `move` is {x, z} in camera space, -1..1 each axis.
   updateOnFoot(dt, move, running, colliders) {
     const speed = running ? 8.5 : 4.6;
@@ -64,6 +74,11 @@ export class Player {
     } else {
       this.speed = damp(this.speed, 0, 10, dt);
     }
+    if (this.jumpV !== 0 || this.jumpY > 0) {
+      this.jumpY += this.jumpV * dt;
+      this.jumpV -= 22 * dt;
+      if (this.jumpY <= 0) { this.jumpY = 0; this.jumpV = 0; }
+    }
     resolveCircleCollisions(colliders, this.pos, 0.6);
     this.pos.x = clamp(this.pos.x, -215, 260);
     this.pos.z = clamp(this.pos.z, -215, 215);
@@ -74,6 +89,7 @@ export class Player {
     this.limbs.armL.rotation.x = -swing * 0.8;
     this.limbs.armR.rotation.x = swing * 0.8;
     this.mesh.position.copy(this.pos);
+    this.mesh.position.y = this.jumpY;
     this.mesh.rotation.y = this.heading;
   }
 
@@ -131,6 +147,8 @@ export class Player {
     this.heading = 0;
     this.health = 100;
     this.inCar = null;
+    this.jumpY = 0;
+    this.jumpV = 0;
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = 0;
     this.mesh.visible = true;

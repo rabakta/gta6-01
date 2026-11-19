@@ -1,6 +1,6 @@
 // BRISA BAY — boot, game loop and the glue between systems.
 import * as THREE from 'three';
-import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT, GANGS } from './config.js';
+import { WEAPONS, MISSION_META, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT, GANGS } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney, theftWitnessed } from './utils.js';
 import { buildCity, nearestRoadCoord } from './city.js';
 import { Car, TrafficManager, PoliceManager, carsOverlap } from './vehicles.js';
@@ -14,6 +14,7 @@ import { CollectibleManager } from './collectibles.js';
 import { Birds } from './birds.js';
 import { AudioEngine } from './audio.js';
 import { HUD } from './hud.js';
+import { TouchControls } from './touch.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
 import { shotParam, stageShot } from './shots.js';
 import { glowTexture } from './textures.js';
@@ -39,6 +40,10 @@ class Game {
     this.save = loadSave() || defaultSave();
     if (!this.save.upgrades) this.save.upgrades = { armor: 0, engine: 0, tires: 0 };
     if (!this.save.packages) this.save.packages = [];
+    if (this.save.settings) {
+      this.audio.setVolume(this.save.settings.volume ?? 0.5);
+      this.audio.setRadioVolume(this.save.settings.radio ?? 0.8);
+    }
 
     this.player = new Player(this.scene, -140, 140);
     this.player.health = 100;
@@ -78,6 +83,8 @@ class Game {
     this.nearShop = null;
     this.shopOpen = false;
     this.dragging = false;
+    this.touchBrake = false;
+    this.promptText = null;
     this.dragDist = 0;
     this.lastX = 0;
     this.lastY = 0;
@@ -85,8 +92,6 @@ class Game {
     this.exhaustTimer = 0;
     this.dustTimer = 0;
     this.roadblockAlerted = false;
-    this.lastNearShop = null; // for the one-time "Press E" shop prompt
-    this.lastNearCar = null; // same, for the "Press E" car prompt
 
     this.traffic.spawn(14, { x: -140, z: 140 }, 150);
     this.peds.spawn(24, { x: -140, z: 140 }, 120);
@@ -106,8 +111,18 @@ class Game {
     for (const g of GANGS) this.peds.spawnGang(g, 3);
 
     this.bindInput();
+    this.touch = new TouchControls({
+      onEnter: () => this.onInteract(),
+      onShoot: () => { if (this.state === 'playing' && !this.player.inCar) this.shoot(); },
+      onJump: () => { if (this.state === 'playing' && !this.player.inCar) this.player.jump(); },
+      onWeapon: () => this.cycleWeapon(),
+      onPause: () => { if (this.state === 'playing') this.pause(); },
+      onBrake: (down) => { this.touchBrake = down; },
+    });
+    this.touch.attach();
+    this.hud.bindTouch(this.touch);
     addEventListener('resize', () => this.onResize());
-    this.hud.showMenu('start', 'BRISA BAY', this.startMenuBody(), 'Press ENTER to start - New Game or Continue');
+    this.showStartScreen();
     this.clock = new THREE.Clock();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
@@ -119,21 +134,24 @@ class Game {
     this.renderer.setSize(innerWidth, innerHeight);
   }
 
-  startMenuBody() {
-    const hasSave = !!loadSave();
+  // Start screen: the HUD builds it from this data; the story, controls
+  // and save ledger live in hud.js now, not in a string here.
+  showStartScreen() {
+    this.state = 'menu';
     const next = this.save.missionIndex < MISSION_META.length ? MISSION_META[this.save.missionIndex] : null;
-    // The side-activity ledger — packages found, fares run, fare cash.
-    const pkgs = this.save.packages ? this.save.packages.length : 0;
-    const fares = (this.save.stats && this.save.stats.faresDone) || 0;
-    const faresEarned = (this.save.stats && this.save.stats.faresEarned) || 0;
-    return (
-      '<p class="story">' + STORY_INTRO.join('<br>') + '</p>' +
-      '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car / shop &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; Pistol by the safehouse<br>' +
-      'H horn &nbsp;·&nbsp; Q radio on/off &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M next mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; Mouse drag: camera</p>' +
-      (next ? '<p class="next">Next mission: <b>' + next.name + '</b> — ' + next.brief + '</p>' : '<p class="next">Story complete. Free roam, Rio.</p>') +
-      '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of ' + MISSION_META.length + '. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>' +
-      ((pkgs > 0 || fares > 0) ? '<p class="save-line">Packages ' + pkgs + '/20 · Taxi fares ' + fares + ' · Fare cash ' + fmtMoney(faresEarned) + '</p>' : '')
-    );
+    this.hud.showStartScreen({
+      hasSave: !!loadSave(),
+      next,
+      cash: this.save.cash,
+      chapter: this.save.missionIndex + 1,
+      total: MISSION_META.length,
+      pkgs: (this.save.packages || []).length,
+      fares: (this.save.stats && this.save.stats.faresDone) || 0,
+      faresEarned: (this.save.stats && this.save.stats.faresEarned) || 0,
+    }, {
+      onContinue: () => this.startPlaying(false),
+      onNew: () => this.startPlaying(true),
+    });
   }
 
   writeSave() { writeSave(this.save); }
@@ -181,6 +199,7 @@ class Game {
       if (e.code === 'KeyH' && this.state === 'playing' && this.player.inCar) this.audio.horn();
       if (e.code === 'KeyE') this.onInteract();
       if (e.code === 'KeyF' && this.state === 'playing' && !this.player.inCar) this.punch();
+      if (e.code === 'Space' && this.state === 'playing' && !this.player.inCar) this.player.jump();
     });
     addEventListener('keyup', (e) => { this.keys[e.code] = false; });
     const canvas = document.getElementById('game');
@@ -236,9 +255,47 @@ class Game {
 
   pause() {
     this.state = 'paused';
-    this.hud.showMenu('pause', 'PAUSED', '<p>Take a breath, Rio. The city waits.</p><p class="controls">P / ESC resume &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M next mission</p>', 'Press P to resume');
+    this.hud.showPause({ volume: this.audio.volume, radio: this.audio.radioVol }, {
+      onResume: () => this.resume(),
+      onRestart: () => this.restartMission(),
+      onMenu: () => this.showStartScreen(),
+      onVolume: (kind, v) => this.setVolume(kind, v),
+    });
   }
   resume() { this.state = 'playing'; this.hud.hideMenu(); }
+
+  setVolume(kind, v) {
+    if (kind === 'radio') this.audio.setRadioVolume(v);
+    else this.audio.setVolume(v);
+    if (!this.save.settings) this.save.settings = { volume: 0.5, radio: 0.8 };
+    this.save.settings[kind === 'radio' ? 'radio' : 'volume'] = v;
+    this.writeSave();
+  }
+
+  // Restart the active mission, or the next one when free-roaming.
+  restartMission() {
+    const i = this.missions.state === 'active' ? this.missions.active : this.save.missionIndex;
+    if (i < MISSION_META.length) {
+      this.hud.hideMenu();
+      this.state = 'playing';
+      this.missions.startMission(i);
+    } else this.resume();
+  }
+
+  // Touch WEAPON button: step to the next owned gun in slot order.
+  cycleWeapon() {
+    if (this.state !== 'playing') return;
+    const order = ['fists', 'pistol', 'smg', 'shotgun'];
+    const cur = order.indexOf(this.save.currentWeapon || 'fists');
+    for (let n = 1; n <= order.length; n++) {
+      const k = order[(cur + n) % order.length];
+      if (this.save.weapons[k]) {
+        this.save.currentWeapon = k;
+        this.notify(WEAPONS[k].name + ' equipped.');
+        return;
+      }
+    }
+  }
 
   // --- cars -------------------------------------------------------------------
   spawnCar(defKey, color, x, z, heading) {
@@ -487,13 +544,21 @@ class Game {
   }
 
   // --- death / arrest ---------------------------------------------------------
+  deathStats() {
+    return {
+      missions: (this.save.stats && this.save.stats.missionsDone) || 0,
+      stolen: (this.save.stats && this.save.stats.carsStolen) || 0,
+      time: (this.save.stats && this.save.stats.playSeconds) || 0,
+      cash: this.save.cash,
+    };
+  }
   wasted() {
     this.state = 'wasted';
     const lost = Math.round(this.save.cash * 0.1);
     this.save.cash -= lost;
     this.writeSave();
     if (this.missions.state === 'active') this.missions.fail('Rio got wasted');
-    this.hud.showMenu('dead', 'WASTED', '<p>Rio went down in Brisa Bay.</p><p>Hospital bill: ' + fmtMoney(lost) + '.</p>', 'Press ENTER to get back up');
+    this.hud.showDeath('WASTED', lost, this.deathStats(), { onRespawn: () => this.respawn() });
     this.audio.fail();
   }
   busted() {
@@ -502,7 +567,7 @@ class Game {
     this.save.cash -= lost;
     this.writeSave();
     if (this.missions.state === 'active') this.missions.fail('Busted by the BCPD');
-    this.hud.showMenu('dead', 'BUSTED', '<p>The BCPD hauled Rio in.</p><p>Bail: ' + fmtMoney(lost) + '.</p>', 'Press ENTER to walk free');
+    this.hud.showDeath('BUSTED', lost, this.deathStats(), { onRespawn: () => this.respawn() });
     this.audio.fail();
   }
   respawn() {
@@ -519,6 +584,7 @@ class Game {
   // --- per-frame update -------------------------------------------------------
   update(dt) {
     this.elapsed += dt;
+    this.save.stats.playSeconds = (this.save.stats.playSeconds || 0) + dt;
     this.clockSec += dt * 12; // a game minute every 5 real seconds
     const p = this.player;
 
@@ -528,14 +594,19 @@ class Game {
     if (this.keys.Digit2 && this.save.weapons.smg) this.save.currentWeapon = 'smg';
     if (this.keys.Digit3 && this.save.weapons.shotgun) this.save.currentWeapon = 'shotgun';
 
-    // Movement input, in camera space.
-    const fwd = (this.keys.KeyW || this.keys.ArrowUp ? 1 : 0) - (this.keys.KeyS || this.keys.ArrowDown ? 1 : 0);
-    const strafe = (this.keys.KeyD || this.keys.ArrowRight ? 1 : 0) - (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0);
+    // Movement input, in camera space: keys plus the touch stick, so a
+    // phone player steers exactly like a keyboard one. Stick to the edge
+    // to run, the same as holding SHIFT.
+    const ta = this.touch.axes;
+    const fwd = clamp((this.keys.KeyW || this.keys.ArrowUp ? 1 : 0) - (this.keys.KeyS || this.keys.ArrowDown ? 1 : 0) + ta.fwd, -1, 1);
+    const strafe = clamp((this.keys.KeyD || this.keys.ArrowRight ? 1 : 0) - (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) + ta.strafe, -1, 1);
+    const running = !!(this.keys.ShiftLeft || this.keys.ShiftRight) || ta.run;
     if (p.inCar) {
       const car = p.inCar;
       car.drive(dt, fwd, strafe, this.world.colliders);
-      // Space is the handbrake: hard stop, brake lights on.
-      const handbrake = !!this.keys.Space;
+      // Space is the handbrake: hard stop, brake lights on. The touch
+      // BRAKE button holds the same line.
+      const handbrake = !!this.keys.Space || this.touchBrake;
       if (handbrake) car.speed *= Math.max(0, 1 - 4 * dt);
       p.pos.copy(car.pos);
       p.heading = car.heading;
@@ -576,7 +647,7 @@ class Game {
       const yaw = p.camYaw;
       const mx = -Math.sin(yaw) * fwd + Math.cos(yaw) * strafe;
       const mz = -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
-      p.updateOnFoot(dt, { x: mx, z: mz }, !!(this.keys.ShiftLeft || this.keys.ShiftRight), this.world.colliders);
+      p.updateOnFoot(dt, { x: mx, z: mz }, running, this.world.colliders);
       this.audio.setEngine(0, false);
       // On foot, Rio is solid: cars push him out of their box instead of
       // driving through him, and a fast one hurts.
@@ -735,25 +806,20 @@ class Game {
     }
     this.audio.setSiren(this.wanted > 0, this.police.nearestPoliceDist(p.pos));
 
-    // Shops: nearest one within reach shows its prompt — once per
-    // approach, so the toast doesn't spam while Rio stands there.
+    // Interaction prompt: one live line while Rio stands in reach — a fare
+    // pickup beats a shop, a shop beats a car. The HUD shows it until he
+    // walks away, so no toast spam and no missed prompt.
     this.nearShop = null;
     if (!p.inCar) {
       for (const s of this.world.shops) {
         if (dist2(p.pos.x, p.pos.z, s.x, s.z) < 7) { this.nearShop = s; break; }
       }
     }
-    if (this.nearShop && this.nearShop !== this.lastNearShop && !this.shopOpen) {
-      this.notify('Press E - ' + this.nearShop.name + ': ' + this.nearShop.blurb);
-    }
-    this.lastNearShop = this.nearShop;
-    // Same prompt for a car in reach — E steals it. Once per approach,
-    // and never while a fare offer wants E for its passenger.
     const nearCar = !p.inCar && !this.taxi.offer ? this.nearestCar(3.4) : null;
-    if (nearCar && nearCar !== this.lastNearCar) {
-      this.notify('Press E - steal the ' + nearCar.def.label);
-    }
-    this.lastNearCar = nearCar;
+    this.promptText = this.shopOpen ? null
+      : this.taxi.offer ? 'E — Pick up ' + this.taxi.offer.name
+      : this.nearShop ? 'E — ' + this.nearShop.name + ': ' + this.nearShop.blurb
+      : nearCar ? 'E — Steal the ' + nearCar.def.label : null;
 
     // Keep the city populated around the player.
     if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
@@ -785,6 +851,10 @@ class Game {
       weapons: this.save.weapons,
       speedKmh: p.inCar ? Math.abs(p.inCar.speed) * 3.6 : p.speed * 3.6,
       carHealth: p.inCar ? p.inCar.health : null,
+      carSpeed: p.inCar ? p.inCar.speed : 0,
+      carTop: p.inCar ? (p.inCar.eff ? p.inCar.eff.topSpeed : p.inCar.def.topSpeed) : 0,
+      inCar: !!p.inCar,
+      prompt: this.promptText,
       radio: this.audio.stationName(),
       objective: this.objectiveText(),
       clockSec: this.clockSec % 86400,

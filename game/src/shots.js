@@ -1,11 +1,13 @@
 // BRISA BAY — screenshot staging. `?shot=menu|foot|chase|mission` drops the
 // game straight into a composed scene so a screenshot shows the systems at
-// their best, with no menu in the way. `?shot=garage` opens the garage shop
-// for a verification shot. The race shot is the Grand Prix cover, taxi
-// shows a fare offer with passenger and amber beacon in frame, packages
-// shows Rio on foot beside a gold collectible parcel, and street is the
-// busy-city cover: Rio on a Moto weaving toward a dwelling bus. Used only
-// for the entry's screenshots and for testing the new systems.
+// their best, with no menu in the way — except `menu`, which stages the v8
+// start screen itself (story, controls, Continue / New Game buttons).
+// `?shot=garage` opens the garage shop for a verification shot. The race
+// shot is the Grand Prix cover, taxi shows a fare offer with passenger and
+// amber beacon in frame, packages shows Rio on foot beside a gold
+// collectible parcel, and street is the busy-city cover: Rio on a Moto
+// weaving toward a dwelling bus. Used only for the entry's screenshots and
+// for testing the new systems.
 export function shotParam() {
   const q = new URLSearchParams(location.search);
   return q.get('shot');
@@ -33,8 +35,7 @@ function stagePolice(g, count, wanted = 3) {
 export function stageShot(game, shot) {
   const g = game;
   if (shot === 'menu') {
-    g.state = 'menu';
-    g.hud.showMenu('start', 'BRISA BAY', g.startMenuBody(), 'Press ENTER to start');
+    g.showStartScreen();
     return;
   }
   // All gameplay shots skip the menu.

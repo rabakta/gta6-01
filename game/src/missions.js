@@ -240,6 +240,9 @@ export class MissionManager {
     }
     // Toast every new step so the player always knows what changed.
     if (this.stepIndex > 0) this.game.notify(step.text);
+    // The banner says the same thing, big and gold — a step change is the
+    // one moment the player must not miss while driving.
+    if (this.game.hud) this.game.hud.banner(this.objectiveText());
   }
 
   placeMarker(x, z) {
@@ -300,6 +303,12 @@ export class MissionManager {
     this.game.writeSave();
     this.game.audio.jingle();
     this.game.notify('Mission complete! +' + '$' + reward.toLocaleString('en-US'));
+    if (this.game.hud) {
+      this.game.hud.showMissionSplash({
+        kind: 'complete', title: 'MISSION COMPLETE', name: this.doneName,
+        lines: ['Reward $' + reward.toLocaleString('en-US'), 'Missions done ' + this.game.save.stats.missionsDone, 'Cash $' + this.game.save.cash.toLocaleString('en-US')],
+      });
+    }
     this.game.setWanted(0);
     this.cleanupEntities();
     this.active = -1;
@@ -308,10 +317,20 @@ export class MissionManager {
 
   fail(reason) {
     this.clearMarker();
+    // Capture the name first: active is cleared below, and meta reads it.
+    const name = this.meta ? this.meta.name : 'Mission';
     this.state = 'failed';
     this.failReason = reason;
     this.game.audio.fail();
     this.game.notify('Mission failed - ' + reason + '. Press M to retry.');
+    // A fail splash only in live play — when Rio dies the WASTED screen
+    // owns the moment instead, and the fail line would double up under it.
+    if (this.game.state === 'playing' && this.game.hud) {
+      this.game.hud.showMissionSplash({
+        kind: 'fail', title: 'MISSION FAILED', name,
+        lines: [reason, 'Press M to retry'],
+      });
+    }
     this.cleanupEntities();
     this.active = -1;
     this.stepIndex = 0;
