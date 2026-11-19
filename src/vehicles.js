@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT } from './config.js';
 import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
 import { nearestRoadCoord, resolveCircleCollisions } from './city.js';
-import { barrierTexture, glowTexture, clearcoatNormalMap } from './textures.js';
+import { barrierTexture, glowTexture, generateClearcoatNormal } from './textures.js';
 
 const CAR_COLORS = { police: 0x1d2733 };
 
@@ -58,7 +58,7 @@ function bodyMat(colorHex) {
       metalness: 0.85,
       clearcoat: 0.5,
       clearcoatRoughness: 0.1,
-      clearcoatNormalMap: clearcoatNormalMap(0),
+      clearcoatNormalMap: generateClearcoatNormal(0),
       clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
     }); 
     bodyMats.set(colorHex, m); 
