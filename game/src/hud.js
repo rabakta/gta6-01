@@ -70,8 +70,18 @@ const HUD_CSS = [
   '#phone-menu .phone-footer{height:50px;background:rgba(0,0,0,0.5);border-top:1px solid rgba(74,111,165,0.3);display:flex;align-items:center;justify-content:center;gap:40px;padding:0 20px;color:#6a8ab8;font-size:12px}',
   '#phone-menu .phone-detail{display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(10,16,24,0.98);z-index:10;padding:20px;overflow-y:auto;color:#fff}',
   '#phone-menu .phone-detail.active{display:block}',
+  // Phone pause menu
   '#phone-menu .phone-detail .back-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(74,111,165,0.2);border:1px solid #4a6fa5;border-radius:8px;color:#ffd34d;font-weight:700;cursor:pointer;margin-bottom:20px;transition:background .15s}',
   '#phone-menu .phone-detail .back-btn:hover{background:rgba(74,111,165,0.4)}',
+  // Context Prompts: dynamic hint panel (bottom-center)
+  '#context-prompts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:8;pointer-events:none}',
+  '#context-prompts .cp-row{display:flex;align-items:center;gap:10px;background:rgba(10,16,24,0.85);border:1px solid rgba(74,111,165,0.4);border-radius:6px;padding:6px 12px;color:#fff;font:13px Arial,sans-serif;white-space:nowrap;opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s}',
+  '#context-prompts .cp-row.visible{opacity:1;transform:translateY(0)}',
+  '#context-prompts .cp-key{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;background:rgba(255,211,77,0.2);border:1px solid #ffd34d;border-radius:4px;color:#ffd34d;font-weight:700;font-size:11px;padding:0 8px}',
+  '#context-prompts .cp-key.mouse{background:rgba(126,226,168,0.2);border-color:#7ee2a8;color:#7ee2a8}',
+  '#context-prompts .cp-text{color:#e8eef6;font-size:12px}',
+  '#context-prompts .cp-row.primary .cp-key{background:#ffd34d;border-color:#ffd34d;color:#0c121a}',
+  '#context-prompts .cp-row.primary .cp-text{color:#ffd34d;font-weight:700}',
   // Mission Box (left panel) - persistent mission/race info
   '#mission-box{position:fixed;top:120px;left:16px;width:300px;background:linear-gradient(180deg,rgba(10,16,24,0.95) 0%,rgba(15,22,34,0.98) 100%);border:2px solid #4a6fa5;border-radius:12px;box-shadow:0 0 30px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.1);z-index:10;color:#fff;font-family:Arial,sans-serif;transition:transform .3s,opacity .3s,width .3s;overflow:hidden}',
   '#mission-box.collapsed{width:48px}',
@@ -188,6 +198,9 @@ export class HUD {
     this.phoneMenuEl = this.buildPhoneMenu();
     // Mission Box (left panel)
     this.missionBoxEl = this.buildMissionBox();
+    // Context Prompts panel
+    this.contextPromptsEl = mk('context-prompts');
+    this.contextPromptRows = new Map();
   }
 
   bindTouch(touch) { this.touch = touch; }
@@ -299,8 +312,92 @@ export class HUD {
     this.bannerTimer = 3.5;
   }
 
-  // The persistent interaction prompt ("E — Steal the Vento"): one line
-  // under the toasts, live while the player stands in reach, gone after.
+  // Context Prompts: dynamic hint panel based on player state and nearby interactables
+  // Replaces the single-line prompt with a stack of contextual hints
+  updateContextPrompts(state) {
+    if (!this.contextPromptsEl) return;
+    const inCar = !!state.inCar;
+    const nearShop = state.nearShop;
+    const nearCar = state.nearCar;
+    const nearPickup = state.nearPickup;
+    const nearMission = state.nearMission;
+    const weaponKey = state.weaponKey || 'fists';
+    const hasGun = weaponKey !== 'fists';
+    const wanted = state.wanted || 0;
+
+    // Build prompt rows based on context
+    const rows = [];
+
+    // Primary interaction (closest interactable)
+    if (nearMission) {
+      rows.push({ key: 'E', text: 'Start ' + nearMission.name, primary: true, mouse: false });
+    } else if (nearShop) {
+      rows.push({ key: 'E', text: 'Enter ' + nearShop.name, primary: true, mouse: false });
+    } else if (nearPickup) {
+      rows.push({ key: 'E', text: 'Pick up ' + nearPickup.kind, primary: true, mouse: false });
+    } else if (nearCar && !inCar) {
+      rows.push({ key: 'E', text: nearCar.isPlayerCar ? 'Enter ' + nearCar.def.label : 'Steal ' + nearCar.def.label, primary: true, mouse: false });
+    } else if (inCar) {
+      rows.push({ key: 'E', text: 'Exit vehicle', primary: true, mouse: false });
+    }
+
+    // Secondary actions (always available based on state)
+    if (inCar) {
+      rows.push({ key: 'SHIFT', text: 'Handbrake', primary: false, mouse: false });
+      rows.push({ key: 'H', text: 'Horn', primary: false, mouse: false });
+      rows.push({ key: 'R', text: 'Radio', primary: false, mouse: false });
+    } else {
+      rows.push({ key: 'SHIFT', text: 'Run', primary: false, mouse: false });
+      rows.push({ key: 'SPACE', text: 'Jump', primary: false, mouse: false });
+      rows.push({ key: 'F', text: 'Punch', primary: false, mouse: false });
+      if (hasGun) {
+        rows.push({ key: 'CLICK', text: 'Shoot', primary: false, mouse: true });
+      }
+    }
+
+    // Universal actions
+    rows.push({ key: 'TAB', text: 'Weapon Wheel', primary: false, mouse: false });
+    rows.push({ key: 'P', text: 'Pause / Phone', primary: false, mouse: false });
+    rows.push({ key: 'Q', text: 'Radio On/Off', primary: false, mouse: false });
+    if (wanted > 0) {
+      rows.push({ key: 'ESC', text: 'Hide (Lose Cops)', primary: false, mouse: false });
+    }
+
+    // Update DOM
+    const existingKeys = new Set(this.contextPromptRows.keys());
+    const newKeys = new Set();
+
+    rows.forEach((row, i) => {
+      const rowKey = row.key + ':' + row.text;
+      newKeys.add(rowKey);
+      let el = this.contextPromptRows.get(rowKey);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'cp-row' + (row.primary ? ' primary' : '');
+        el.style.transitionDelay = (i * 30) + 'ms';
+        el.innerHTML = '<span class="cp-key' + (row.mouse ? ' mouse' : '') + '">' + row.key + '</span><span class="cp-text">' + row.text + '</span>';
+        this.contextPromptsEl.appendChild(el);
+        this.contextPromptRows.set(rowKey, el);
+      }
+      // Force visible
+      requestAnimationFrame(() => el.classList.add('visible'));
+    });
+
+    // Hide/remove old rows
+    for (const [key, el] of this.contextPromptRows) {
+      if (!newKeys.has(key)) {
+        el.classList.remove('visible');
+        setTimeout(() => {
+          if (this.contextPromptRows.has(key) && !newKeys.has(key)) {
+            el.remove();
+            this.contextPromptRows.delete(key);
+          }
+        }, 250);
+      }
+    }
+  }
+
+  // Legacy single-line prompt (kept for compatibility)
   setPrompt(text) {
     if (text) {
       this.promptEl.textContent = text;
@@ -415,6 +512,7 @@ export class HUD {
     } else if (state.health < 30) {
       this.el.damage.style.opacity = String(0.16 + 0.09 * Math.sin(performance.now() / 300));
     }
+    this.updateContextPrompts(state);
     this.setPrompt(state.prompt || null);
     if (this.touch) this.touch.setContext({ inCar: !!state.inCar, weapon: state.weaponKey || 'fists' });
     this.drawMinimap(state);

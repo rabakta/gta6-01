@@ -972,20 +972,39 @@ class Game {
     }
     this.audio.setSiren(this.wanted > 0, this.police.nearestPoliceDist(p.pos));
 
-    // Interaction prompt: one live line while Rio stands in reach — a fare
-    // pickup beats a shop, a shop beats a car. The HUD shows it until he
-    // walks away, so no toast spam and no missed prompt.
+    // Interaction detection for context prompts
     this.nearShop = null;
+    this.nearCar = null;
+    this.nearPickup = null;
+    this.nearMission = null;
+
     if (!p.inCar) {
+      // Nearest shop
       for (const s of this.world.shops) {
         if (dist2(p.pos.x, p.pos.z, s.x, s.z) < 7) { this.nearShop = s; break; }
       }
+      // Nearest car (steal/enter)
+      this.nearCar = !this.taxi.offer ? this.nearestCar(3.4) : null;
+      // Nearest pickup
+      const pickups = this.pickups.activePickups();
+      let bestPickup = null, bestDist2 = 9;
+      for (const pu of pickups) {
+        const d2 = dist2(p.pos.x, p.pos.z, pu.x, pu.z);
+        if (d2 < bestDist2) { bestDist2 = d2; bestPickup = pu; }
+      }
+      this.nearPickup = bestPickup;
+      // Nearest mission marker
+      if (this.missions.markerPos) {
+        const d2m = dist2(p.pos.x, p.pos.z, this.missions.markerPos.x, this.missions.markerPos.z);
+        if (d2m < 9) this.nearMission = { name: this.missions.meta?.name || 'Mission' };
+      }
     }
-    const nearCar = !p.inCar && !this.taxi.offer ? this.nearestCar(3.4) : null;
+
+    // Legacy prompt text (for compatibility)
     this.promptText = this.shopOpen ? null
       : this.taxi.offer ? 'E — Pick up ' + this.taxi.offer.name
       : this.nearShop ? 'E — ' + this.nearShop.name + ': ' + this.nearShop.blurb
-      : nearCar ? 'E — Steal the ' + nearCar.def.label : null;
+      : this.nearCar ? 'E — Steal the ' + this.nearCar.def.label : null;
 
     // Keep the city populated around the player.
     if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
@@ -1034,6 +1053,10 @@ class Game {
       fare: this.taxi.minimapBlip(),
       busStops: this.world.busStops,
       gangs: GANGS,
+      nearShop: this.nearShop,
+      nearCar: this.nearCar,
+      nearPickup: this.nearPickup,
+      nearMission: this.nearMission,
     });
     if (this.elapsed % 30 < dt) this.writeSave();
   }
