@@ -22,6 +22,8 @@ export class CutsceneManager {
     this.cameraLerpElapsed = 0;
     this.raceCountdown = null;
     this.countdownEl = null;
+    this.pendingRaceGo = null;
+    this.countdownDone = false;
   }
 
   // Queue a cutscene sequence
@@ -57,8 +59,8 @@ export class CutsceneManager {
         this.startCameraLerp({
           fromPos: step.fromPos || new THREE.Vector3().copy(g.camera.position),
           fromTarget: step.fromTarget || new THREE.Vector3().copy(g.controls?.target || new THREE.Vector3()),
-          toPos: step.toPos,
-          toTarget: step.toTarget,
+          toPos: step.toPos || new THREE.Vector3().copy(g.camera.position),
+          toTarget: step.toTarget || new THREE.Vector3().copy(g.controls?.target || new THREE.Vector3()),
           duration: step.duration || 2.0,
           easing: step.easing || 'easeInOutCubic',
         });
@@ -102,8 +104,8 @@ export class CutsceneManager {
       elapsed: 0,
     };
     // Disable player camera control during cutscene
-    if (g.controls) g.controls.enabled = false;
-    g.camera.updateMatrixWorld();
+    if (this.game.controls) this.game.controls.enabled = false;
+    this.game.camera.updateMatrixWorld();
   }
 
   // Typewriter text box
@@ -150,6 +152,10 @@ export class CutsceneManager {
 
   // Race countdown: 3, 2, 1, GO!
   startRaceCountdown(onGo) {
+    // Remember the GO callback: if the player skips the countdown, skip()
+    // fires it so the race still starts instead of hanging in race_loading.
+    this.pendingRaceGo = onGo || null;
+    this.countdownDone = false;
     if (!this.countdownEl) {
       this.countdownEl = document.createElement('div');
       this.countdownEl.id = 'race-countdown';
@@ -181,11 +187,17 @@ export class CutsceneManager {
       ], { duration: 900, easing: 'cubic-bezier(0.25,0.46,0.45,0.94)' });
 
       setTimeout(() => {
+        // The countdown may already be over (skipped): countdownDone is
+        // set on GO, so a stale timeout must not fire it a second time
+        // (that would re-enter the race and double-spawn the grid).
+        if (this.countdownDone) return;
         i++;
         if (i < sequence.length) {
           showNumber(sequence[i]);
         } else {
           this.countdownEl.style.opacity = '0';
+          this.countdownDone = true;
+          this.pendingRaceGo = null;
           if (onGo) onGo();
           this.next();
         }
@@ -231,6 +243,13 @@ export class CutsceneManager {
   skip() {
     // Clear all timeouts
     if (this.typewriterTimeout) clearTimeout(this.typewriterTimeout);
+    // A skipped race countdown still goes: fire GO so the race starts.
+    if (this.pendingRaceGo) {
+      const go = this.pendingRaceGo;
+      this.pendingRaceGo = null;
+      this.countdownDone = true;
+      go();
+    }
     // Hide UI
     this.hideText();
     if (this.countdownEl) this.countdownEl.style.opacity = '0';

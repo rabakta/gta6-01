@@ -118,10 +118,10 @@ export function stageShot(game, shot) {
     // own lane, which is why the speedo stuck at 64 km/h.
     g.traffic.spawn(6, { x: 0, z: -120 }, 70);
     g.peds.spawn(8, { x: -60, z: 60 }, 80);
-    g.missions.startMission(8); // Sunset Run: the timed delivery
+    g.missions.startMission(12); // Sunset Run: the timed delivery
     g.player.camDist = 11;
   } else if (shot === 'mission') {
-    // Mission 10 in progress: Lose the Tail. Rio in a Furia on the
+    // Mission 14 in progress: Lose the Tail. Rio in a Furia on the
     // central east-west road (z=0), Vex's Vento closing in behind him.
     // The first version staged the car at (-20,-20) — off the road grid —
     // so it spent the shot grinding along a building wall.
@@ -132,7 +132,7 @@ export function stageShot(game, shot) {
     g.player.heading = car.heading;
     g.player.camYaw = car.heading + Math.PI; // see chase: no mid-swing camera
     g.keys.KeyW = true;
-    g.missions.startMission(9);
+    g.missions.startMission(13);
     // The tail spawns 38m out at a random angle — usually behind the
     // camera, invisible. Park Vex's Vento ahead-right of the Furia, on
     // the same road, so the chase reads in the frame. (Same ~0.15s of
@@ -161,12 +161,12 @@ export function stageShot(game, shot) {
     g.player.camDist = 9;
   } else if (shot === 'race') {
     // The Midnight Grand Prix. Rio in a Furia on the start line at Coral
-    // Row (x=-180 road, facing south toward the first checkpoint), the
-    // race already running. The goto step completes on the first update
-    // frame — Rio is already on the line — and the race step spawns the
-    // mission Furia and the two rival Ventos ahead of him, with the gold
-    // checkpoint beacon 60m down the road. (Same ~0.15s rule as the chase
-    // shot: stage it, don't drive it.)
+    // Row (x=-180 road, facing south toward the first checkpoint), two
+    // rival Ventos ahead and the gold checkpoint beacon 60m down the
+    // road. Staged directly, not via a mission: starting the Grand Prix
+    // would swap to the race map (an empty road mesh) and the staged
+    // cars live in the city scene. (Same ~0.15s rule as the chase shot:
+    // stage it, don't drive it.)
     const car = g.spawnCar('furia', 0xf2c230, -180, 120, Math.PI);
     g.enterCar(car);
     car.speed = 20;
@@ -174,7 +174,12 @@ export function stageShot(game, shot) {
     g.player.heading = car.heading;
     g.player.camYaw = car.heading + Math.PI; // see chase: no mid-swing camera
     g.keys.KeyW = true;
-    g.missions.startMission(10);
+    for (const z of [90, 75]) {
+      const rival = g.spawnCar('vento', 0x8e2f32, -180, z, Math.PI);
+      rival.kind = 'race';
+      rival.speed = 0;
+    }
+    g.missions.placeMarker(-180, 60);
     g.traffic.spawn(5, { x: -180, z: -60 }, 90);
     // Clear the lane ahead, as in the chase shot: a staged traffic car
     // on the x=-180 road turns the race into a rear-end shunt.

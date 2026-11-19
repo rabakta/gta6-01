@@ -220,13 +220,17 @@ export class MissionManager {
       this.timer = step.timeLimit || RACE_TRACKS[step.track]?.timeLimit || 180;
     }
 
-    // Race start step: load race map, spawn cars, enter race mode
+    // Race start step: load race map, then run the countdown. The race
+    // itself is entered at GO (from the countdown's onGo) — entering it
+    // here too would spawn a second set of cars and let the rivals drive
+    // during the countdown.
     if (step.type === 'race_start') {
       this.loadRaceTrack(step.track);
-      // Play race countdown (3-2-1-GO) then enter race mode
-      this.game.cutscenes.playRaceStart(() => {
-        this.enterRaceMode(step.track, 'race_circuit');
-      });
+      if (this.state === 'race_loading') {
+        this.game.cutscenes.playRaceStart(() => {
+          this.beginStep();
+        });
+      }
       return; // race mode handles the rest
     }
 
@@ -301,10 +305,10 @@ export class MissionManager {
     // Notify game to swap to race map
     this.game.enterRaceMap(track);
 
-    // After map loads, begin the actual race step
-    // The race step will be handled in next update cycle
+    // Advance to the race step, but do NOT begin it yet: the countdown
+    // runs while state is 'race_loading' (update() waits it out), and
+    // the race_circuit step is begun from the countdown's onGo at GO.
     this.stepIndex++;
-    this.beginStep();
   }
 
   enterRaceMode(trackKey, raceType) {
@@ -323,7 +327,7 @@ export class MissionManager {
     const spawn = track.spawn;
     this.targetCar = this.game.spawnCar('furia', 0xf2c230, spawn.x, spawn.z, spawn.heading);
     this.targetCar.kind = 'mission_race';
-    this.game.player.enterCar(this.targetCar);
+    this.game.enterCar(this.targetCar);
 
     // Spawn AI racers
     const aiDiff = track.aiDifficulty || { baseSpeed: 22, catchUpFactor: 0.015 };
@@ -405,7 +409,7 @@ export class MissionManager {
     if (s.player.inCar) {
       const car = g.spawnCar(s.player.inCar.defKey, s.player.inCar.color, s.player.pos.x, s.player.pos.z, s.player.heading);
       car.health = s.player.inCar.health;
-      g.player.enterCar(car);
+      g.enterCar(car);
     }
 
     g.save.currentWeapon = s.player.currentWeapon;

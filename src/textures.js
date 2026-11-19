@@ -780,4 +780,4 @@ export function barrierTexture() {
   tex.anisotropy = HD.ANISO;
   return tex;
 }
-export { generateClearcoatNormal };
+export { generateClearcoatNormal, generateClearcoatNormal as clearcoatNormalMap };

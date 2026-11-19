@@ -1096,6 +1096,8 @@ class Game {
     if (!window.__BRISABAY_READY) {
       window.__BRISABAY_READY = true;
       document.title = 'BRISA BAY - ready';
+      setLoading(100, 'Ready');
+      hideLoading();
     }
   }
 
@@ -1113,6 +1115,14 @@ class Game {
 
     // Build race track geometry (simple road mesh with checkpoints)
     this.buildRaceTrack(track);
+
+    // The race map is open ground: the city's buildings must not be
+    // invisible walls on the track. The Marina hotel sits on the
+    // circuit's checkpoint 7 in city coords — with the city colliders
+    // still active the race is unwinnable (the car pins on a phantom
+    // hotel). Park the city colliders, restore them on exit.
+    this.savedCityColliders = this.world.colliders;
+    this.world.colliders = [];
 
     // Swap scenes
     this.cityScene = this.scene;
@@ -1192,6 +1202,11 @@ class Game {
   }
 
   exitRaceMap() {
+    // City colliders come back first, whatever the scene state is.
+    if (this.savedCityColliders) {
+      this.world.colliders = this.savedCityColliders;
+      this.savedCityColliders = null;
+    }
     if (!this.raceScene) return;
 
     // Clean up race scene
@@ -1209,8 +1224,9 @@ class Game {
     this.raceScene = null;
     this.missions.raceMode = false;
 
-    // Re-add sun/hemi to city scene
-    this.cityScene.add(this.sun, this.sun.target, this.hemiLight);
+    // Re-add sun/hemi to city scene (this.scene now IS the city scene;
+    // cityScene was just nulled above, so add to this.scene, not it).
+    this.scene.add(this.sun, this.sun.target, this.hemiLight);
 
     // Traffic and police will respawn naturally via their managers
     // (based on player position and density settings)
@@ -1221,7 +1237,26 @@ class Game {
 
 window.addEventListener('error', (e) => { document.title = 'ERR: ' + (e.message || 'unknown'); });
 
+// Loading screen progress. The overlay is plain HTML in index.html, so it
+// paints before this module runs; these calls advance its bar at real
+// boot milestones and fade it out once the first frame renders.
+function setLoading(pct, status) {
+  const fill = document.getElementById('loading-bar-fill');
+  const label = document.getElementById('loading-status');
+  if (fill) fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  if (label && status) label.textContent = status;
+}
+function hideLoading() {
+  const el = document.getElementById('loading');
+  if (!el) return;
+  el.classList.add('done');
+  if (window.__loadingTipTimer) clearInterval(window.__loadingTipTimer);
+  setTimeout(() => el.remove(), 700);
+}
+
+setLoading(35, 'Building Brisa Bay…');
 const game = new Game();
+setLoading(75, 'Warming up…');
 window.game = game; // Expose for debugging
 // Screenshot staging must run after the first boot, before capture.
 if (game.shotMode) {

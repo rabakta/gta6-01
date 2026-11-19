@@ -181,9 +181,13 @@ export class Ped {
     if (this.dead) return;
     this.age += dt;
     
-    // Stuck detection - if position barely changed for 3 seconds, pick new heading
+    // Stuck detection - if position barely changed for 3 seconds, pick new heading.
+    // The threshold is per-frame: a ped walking at 1 m/s moves ~0.017 m per
+    // 60 fps frame, so 0.1 would flag every slow walker as stuck. Only count
+    // it when the ped is actually trying to move (speed > 0.1) and its
+    // position is effectively frozen (< 5 mm in a frame).
     const moved = this.pos.distanceTo(this.lastPos);
-    if (moved < 0.1) {
+    if (this.speed > 0.1 && moved < 0.005) {
       this.stuckTimer += dt;
       if (this.stuckTimer > 3) {
         this.heading += Math.PI + (Math.random() - 0.5) * 1.0;
@@ -271,7 +275,13 @@ export class Ped {
       this.speed = this.walkSpeed;
     }
     
-    // Sidewalk following - try to stay on sidewalk (9m from road center)
+    // Sidewalk following - try to stay on sidewalk (9m from road center).
+    // Directed peds cross roads on purpose: a fleeing ped, a gang member in
+    // active chase, or a follower trailing its leader must not be snapped
+    // back mid-pursuit - the snap teleports chases and splits groups apart.
+    const chasing = this.role === 'gang' && this.targetPos
+      && dist2(this.pos.x, this.pos.z, this.targetPos.x, this.targetPos.z) < (this.aggro || 26);
+    const directed = this.fleeing || chasing || (this.role === 'group' && this.groupLeader);
     const lines = world.roads;
     let nearestRoadDist = Infinity;
     for (const l of lines) {
@@ -281,7 +291,7 @@ export class Ped {
       if (d2 < nearestRoadDist) nearestRoadDist = d2;
     }
     // If too close to road center (< 6m), push toward sidewalk
-    if (nearestRoadDist < 6 && this.speed > 0) {
+    if (nearestRoadDist < 6 && this.speed > 0 && !directed) {
       // Find which road we're near and push perpendicular
       for (const l of lines) {
         const dx = Math.abs(this.pos.x - l);

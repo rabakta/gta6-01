@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="BRISA BAY — an open-world crime game. Drive, steal cars, run 12 story missions, run taxi fares, collect 20 packages, dodge the BCPD.">
+<meta name="description" content="BRISA BAY — an open-world crime game. Drive, steal cars, run 16 story missions, run taxi fares, collect 20 packages, dodge the BCPD.">
 <title>BRISA BAY — open-world crime</title>
 <link rel="icon" href="data:,">
 <script type="importmap">
@@ -78,6 +78,28 @@
   /* Visually hidden live region for screen readers. */
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
+  /* Loading screen: black-orange sunset, big title, bar, tips. Shown
+     from first paint; main.js fades it out once the game is ready. */
+  #loading { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; color: #fff; pointer-events: none;
+    background:
+      radial-gradient(ellipse 60% 35% at 50% 68%, rgba(255, 170, 60, 0.55), rgba(255, 106, 0, 0.22) 55%, transparent 75%),
+      linear-gradient(180deg, #050505 0%, #0d0a08 45%, #3a1503 68%, #120806 100%);
+    transition: opacity 0.6s ease; }
+  #loading.done { opacity: 0; }
+  #loading-title { font-size: 84px; font-weight: 900; letter-spacing: 10px; margin: 0; line-height: 1;
+    background: linear-gradient(180deg, #ffe9a8 0%, #ffb347 45%, #ff6a00 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 0 rgba(0,0,0,0.85)) drop-shadow(0 10px 30px rgba(0,0,0,0.8)); }
+  #loading-tag { margin-top: 10px; font-size: 15px; letter-spacing: 4px; color: #ffd98a; text-transform: uppercase; }
+  #loading-bar-track { width: min(520px, 80vw); height: 16px; margin-top: 44px;
+    border: 2px solid rgba(255, 211, 77, 0.8); border-radius: 8px; background: rgba(0,0,0,0.6); overflow: hidden; }
+  #loading-bar-fill { height: 100%; width: 12%; background: linear-gradient(90deg, #ff6a00, #ffd34d); transition: width 0.4s ease; }
+  #loading-status { margin-top: 12px; font-size: 14px; color: #ffe9c9; }
+  #loading-tip { margin-top: 26px; font-size: 15px; font-style: italic; color: #bcd6ea; max-width: 560px; padding: 0 20px; line-height: 1.5; }
+  #loading-tip b { color: #ffd34d; font-style: normal; }
+  #loading-foot { margin-top: 34px; font-size: 12px; letter-spacing: 2px; color: rgba(255,255,255,0.55); text-transform: uppercase; }
+
   /* On narrow windows the hint bar would collide with the minimap. */
   @media (max-width: 900px) { #hint { display: none; } }
 </style>
@@ -86,6 +108,38 @@
 <!-- BRISA BAY — HUD and menus; the game itself boots from src/main.js. -->
 <noscript><p style="color:#fff;text-align:center;padding:40px">BRISA BAY needs JavaScript to run.</p></noscript>
 <canvas id="game" aria-label="Brisa Bay: an open-world crime game. Drive, steal cars, run missions, run taxi fares, collect packages, dodge the police."></canvas>
+<div id="loading">
+  <h1 id="loading-title">BRISA BAY</h1>
+  <div id="loading-tag">Sun, streets and second chances</div>
+  <div id="loading-bar-track"><div id="loading-bar-fill"></div></div>
+  <div id="loading-status">Loading Brisa Bay…</div>
+  <div id="loading-tip"><b>TIP:</b> Press M to start the next story mission.</div>
+  <div id="loading-foot">16 story missions · Taxi fares · 20 packages · BCPD heat</div>
+</div>
+<script>
+  // Loading tips rotate while the game boots; the module takes over the
+  // bar once it runs and fades this overlay out when ready.
+  (function () {
+    var tips = [
+      'Press M to start the next story mission.',
+      'Taxi fares pay cash — look for the amber beacon.',
+      '20 gold packages are hidden across the city.',
+      'The BCPD notices everything. Lose them, don\u2019t fight them.',
+      'Food restores health. TACO SOL, BURGER SHOT and CLUCKIN BELL are open.',
+      'Steal a faster car — the Furia outruns everything.',
+      'VEX BOYS hold the docks. Red Vipers hold the north.',
+      'Win races to earn crew respect — and cash.',
+      'The safehouse is home. Lose the heat there.',
+      'Press R to change the radio station.'
+    ];
+    var tip = document.getElementById('loading-tip');
+    var i = 0;
+    window.__loadingTipTimer = setInterval(function () {
+      i = (i + 1) % tips.length;
+      if (tip) tip.innerHTML = '<b>TIP:</b> ' + tips[i];
+    }, 2600);
+  })();
+</script>
 <p id="status" role="status" aria-live="polite"></p>
 <div id="damage"></div>
 

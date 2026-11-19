@@ -190,7 +190,7 @@ export function buildCity(scene) {
     for (let i = 0; i < 16; i++) {
       const cloud = new THREE.Sprite(new THREE.SpriteMaterial({
         map: sunGlowTex, color: 0xffe8cc, transparent: true,
-        opacity: 0.20 + cloudRng() * 0.15, depthWrite: false, fog: false,
+        opacity: 0.30 + cloudRng() * 0.15, depthWrite: false, fog: false,
       }));
       cloud.position.set(-500 + cloudRng() * 1100, 180 + cloudRng() * 140, -500 + cloudRng() * 1000);
       cloud.scale.set(180 + cloudRng() * 150, 60 + cloudRng() * 50, 1);
@@ -730,7 +730,20 @@ export function buildCity(scene) {
     colliders.push({ minX: x - 0.6, maxX: x + 0.6, minZ: z - 0.6, maxZ: z + 0.6 });
   }
   
+  // Trees never stand in a road: a trunk on a road centre line pins any
+  // car driving that line (the sidewalk loop, the park rings and the
+  // northern pines all land on cross-roads otherwise). Nudge a position
+  // off any road line (within 3 m) by 12 m into the block.
+  function offRoad(x, z) {
+    for (const l of roadLines()) {
+      if (Math.abs(x - l) < 3) x += 12;
+      if (Math.abs(z - l) < 3) z += 12;
+    }
+    return [x, z];
+  }
+
   function plantTree(x, z, s = 1) {
+    [x, z] = offRoad(x, z);
     const g = new THREE.Group();
     const trunk = new THREE.Mesh(treeTrunkGeo, treeTrunkMat);
     trunk.position.y = 2.5;
@@ -749,6 +762,7 @@ export function buildCity(scene) {
   }
   
   function plantPine(x, z, s = 1) {
+    [x, z] = offRoad(x, z);
     const g = new THREE.Group();
     const trunk = new THREE.Mesh(pineTrunkGeo, pineTrunkMat);
     trunk.position.y = 3;

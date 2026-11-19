@@ -125,14 +125,17 @@ export const GANGS = [
 // Shops on the map corners. `kind` picks the stock list in main.js.
 // ---------------------------------------------------------------------------
 export const SHOPS = [
-  { kind: 'guns',   name: 'AMMU-NATION',  pos: [-150, -60],  blurb: 'Guns, ammo, armour' },
-  { kind: 'guns',   name: 'AMMU-NATION',  pos: [150, 60],    blurb: 'Guns, ammo, armour' },
-  { kind: 'guns',   name: 'AMMU-NATION',  pos: [-60, -150],  blurb: 'Guns, ammo, armour' },
+  // Shop centres sit in block centres (odd multiples of 30). A centre
+  // on a road line (multiple of 60) plants the 12 m shop box across the
+  // whole road and pins any car driving that line.
+  { kind: 'guns',   name: 'AMMU-NATION',  pos: [-150, -30],  blurb: 'Guns, ammo, armour' },
+  { kind: 'guns',   name: 'AMMU-NATION',  pos: [150, 30],    blurb: 'Guns, ammo, armour' },
+  { kind: 'guns',   name: 'AMMU-NATION',  pos: [-30, -150],  blurb: 'Guns, ammo, armour' },
   { kind: 'garage', name: 'GARAGE 24',    pos: [150, -150],  blurb: 'Upgrades - Respray - Repair' },
-  { kind: 'garage', name: 'AUTO HAVEN',   pos: [-150, 60],   blurb: 'Upgrades - Respray - Repair' },
-  { kind: 'food',   name: 'TACO SOL',     pos: [-60, 150],   blurb: 'Hot food restores health' },
-  { kind: 'food',   name: 'BURGER SHOT',  pos: [60, -150],   blurb: 'Hot food restores health' },
-  { kind: 'food',   name: 'CLUCKIN BELL', pos: [0, 180],     blurb: 'Hot food restores health' },
+  { kind: 'garage', name: 'AUTO HAVEN',   pos: [-150, 30],   blurb: 'Upgrades - Respray - Repair' },
+  { kind: 'food',   name: 'TACO SOL',     pos: [-30, 150],   blurb: 'Hot food restores health' },
+  { kind: 'food',   name: 'BURGER SHOT',  pos: [30, -150],   blurb: 'Hot food restores health' },
+  { kind: 'food',   name: 'CLUCKIN BELL', pos: [30, 150],    blurb: 'Hot food restores health' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -338,7 +341,7 @@ export const COLLECTIBLES = [
   { x: 0, z: 30, name: 'Plaza flower stall' },
   { x: 120, z: -90, name: 'North market stall' },
   { x: -120, z: -90, name: 'Northwest corner shop' },
-  { x: -60, z: -150, name: 'Lookout car park' },
+  { x: -60, z: -140, name: 'Lookout car park' },
   { x: 150, z: 120, name: 'Beachfront apartments' },
 ];
 
