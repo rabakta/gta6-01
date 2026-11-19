@@ -8,6 +8,10 @@ const SHIRTS = [0xd94f43, 0x4a6fa5, 0xe8c84a, 0x5a7d5a, 0xd98ab0, 0x7a5aa0, 0xe8
 const SKINS = [0xc98d64, 0x8a5a3b, 0xe8b88a, 0x6b4226];
 const PANTS_COLOURS = [0x2b3a55, 0x3a3a3a, 0x5a4a38];
 
+// More variety for detailed peds
+const HAIR_COLORS = [0x1a1210, 0x3a2a1a, 0x5a4a38, 0x8a5a3b, 0x2b2b2b, 0xe8e2d0];
+const HAT_COLORS = [0xd21f2b, 0xf2c230, 0x2e7d6b, 0x2b3a55, 0xe8e2d0, 0x4a6fa5, 0x8a5a3b];
+
 export class Ped {
   constructor(scene, x, z, opts = {}) {
     this.scene = scene;
@@ -21,60 +25,152 @@ export class Ped {
     this.dead = false;
     this.fleeing = false;
     this.fleeFrom = null;
-    this.deadTimer = 0; // seconds since death; corpses are cleared by the manager
-    this.age = 0; // seconds alive; the manager despawns old far walkers
+    this.deadTimer = 0;
+    this.age = 0;
     this.phase = Math.random() * 6;
     this.shootTimer = 0;
-    // Followers walk with their leader; watchers face the performer.
     this.groupLeader = opts.groupLeader || null;
     this.groupSide = opts.groupSide || 0;
     this.performer = opts.performer || null;
     this.stop = opts.stop || null;
     this.pauseTimer = 0;
-    // Segmented figure: hips, chest, head, swinging arms/legs, shoes.
-    const rng = mulberry32((x * 13 + z * 7) | 0);
-    const shirt = new THREE.MeshLambertMaterial({ color: opts.shirt ?? pick(rng, SHIRTS) });
-    const skin = new THREE.MeshLambertMaterial({ color: opts.skin ?? pick(rng, SKINS) });
-    const pants = new THREE.MeshLambertMaterial({ color: pick(rng, PANTS_COLOURS) });
-    const shoeMat = new THREE.MeshLambertMaterial({ color: this.role === 'jogger' ? 0xe8e2d0 : 0x1a1a1a });
+    
+    // Stuck detection
+    this.lastPos = new THREE.Vector3(x, 0, z);
+    this.stuckTimer = 0;
+    
+    // Better RNG for this ped
+    const rng = mulberry32((x * 13 + z * 7 + Date.now()) | 0);
+    
+    // Detailed materials with PBR
+    const shirtColor = opts.shirt ?? pick(rng, SHIRTS);
+    const skinColor = opts.skin ?? pick(rng, SKINS);
+    const pantsColor = pick(rng, PANTS_COLOURS);
+    const shoeColor = this.role === 'jogger' ? 0xe8e2d0 : 0x1a1a1a;
+    
+    const shirtMat = new THREE.MeshStandardMaterial({ 
+      color: shirtColor, 
+      roughness: 0.85, 
+      metalness: 0.05 
+    });
+    const skinMat = new THREE.MeshStandardMaterial({ 
+      color: skinColor, 
+      roughness: 0.7, 
+      metalness: 0.05 
+    });
+    const pantsMat = new THREE.MeshStandardMaterial({ 
+      color: pantsColor, 
+      roughness: 0.9, 
+      metalness: 0.0 
+    });
+    const shoeMat = new THREE.MeshStandardMaterial({ 
+      color: shoeColor, 
+      roughness: 0.8, 
+      metalness: 0.1 
+    });
+    const darkMat = new THREE.MeshStandardMaterial({ 
+      color: 0x1a1a1a, 
+      roughness: 0.6, 
+      metalness: 0.1 
+    });
+
     this.mesh = new THREE.Group();
-    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.3), pants);
+    
+    // Hips
+    const hips = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.3), pantsMat);
     hips.position.y = 0.78;
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.3), shirt);
+    hips.castShadow = true;
+    hips.receiveShadow = true;
+    
+    // Chest/Torso
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.3), shirtMat);
     chest.position.y = 1.18;
     chest.castShadow = true;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.36), skin);
+    chest.receiveShadow = true;
+    
+    // Head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.36), skinMat);
     head.position.y = 1.62;
-    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.4), new THREE.MeshLambertMaterial({ color: pick(rng, [0x1a1210, 0x3a2a1a, 0x5a4a38]) }));
+    head.castShadow = true;
+    head.receiveShadow = true;
+    
+    // Hair
+    const hairColor = pick(rng, HAIR_COLORS);
+    const hairMat = new THREE.MeshStandardMaterial({ 
+      color: hairColor, 
+      roughness: 0.6, 
+      metalness: 0.05 
+    });
+    const hair = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.4), hairMat);
     hair.position.y = 1.85;
+    hair.castShadow = true;
+    
     this.mesh.add(hips, chest, head, hair);
+    
+    // Legs with proper geometry
     const legGeo = new THREE.BoxGeometry(0.2, 0.65, 0.24);
     legGeo.translate(0, -0.325, 0);
-    const legL = new THREE.Mesh(legGeo, pants);
-    legL.position.set(-0.14, 0.65, 0);
+    const legL = new THREE.Mesh(legGeo, pantsMat);
+    legL.position.set(-0.16, 0.35, 0);
+    legL.castShadow = true;
+    legL.receiveShadow = true;
     const legR = legL.clone();
-    legR.position.x = 0.14;
+    legR.position.x = 0.16;
+    legR.castShadow = true;
+    legR.receiveShadow = true;
+    
+    // Shoes for non-beachgoers
     if (this.role !== 'beachgoer') {
       for (const leg of [legL, legR]) {
-        const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.32), shoeMat);
+        const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.34), shoeMat);
         shoe.position.set(0, -0.6, 0.03);
+        shoe.castShadow = true;
         leg.add(shoe);
       }
     }
+    
+    // Arms
     const armGeo = new THREE.BoxGeometry(0.16, 0.62, 0.2);
     armGeo.translate(0, -0.31, 0);
-    const armL = new THREE.Mesh(armGeo, shirt);
+    const armL = new THREE.Mesh(armGeo, shirtMat);
     armL.position.set(-0.37, 1.42, 0);
+    armL.castShadow = true;
     const armR = armL.clone();
     armR.position.x = 0.37;
+    armR.castShadow = true;
     this.mesh.add(legL, legR, armL, armR);
-    // A hat on some heads, so the crowd reads as individuals.
-    if (opts.hat !== false && rng() < 0.45) {
-      const hatCols = [0xd21f2b, 0xf2c230, 0x2e7d6b, 0x2b3a55, 0xe8e2d0];
-      const hat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.12, 0.42), new THREE.MeshLambertMaterial({ color: pick(rng, hatCols) }));
+    
+    // Hat (30% chance, more variety)
+    if (opts.hat !== false && rng() < 0.3) {
+      const hatColor = pick(rng, HAT_COLORS);
+      const hatMat = new THREE.MeshStandardMaterial({ 
+        color: hatColor, 
+        roughness: 0.7, 
+        metalness: 0.1 
+      });
+      const hat = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.12, 0.42), hatMat);
       hat.position.y = 1.86;
+      hat.castShadow = true;
       this.mesh.add(hat);
     }
+    
+    // Accessories for certain roles
+    if (this.role === 'vendor') {
+      // Add a tray
+      const trayMat = new THREE.MeshStandardMaterial({ color: 0xd8c8a8, roughness: 0.5 });
+      const tray = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.4), trayMat);
+      tray.position.set(0, 1.3, 0.5);
+      this.mesh.add(tray);
+    }
+    
+    if (this.role === 'performer') {
+      // Add guitar/mic
+      const micMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.8, roughness: 0.2 });
+      const mic = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 6), micMat);
+      mic.position.set(0.25, 1.7, 0.3);
+      this.mesh.add(mic);
+    }
+    
     this.legs = [legL, legR];
     this.arms = [armL, armR];
     this.mesh.position.copy(this.pos);
@@ -84,6 +180,20 @@ export class Ped {
   update(dt, world, danger) {
     if (this.dead) return;
     this.age += dt;
+    
+    // Stuck detection - if position barely changed for 3 seconds, pick new heading
+    const moved = this.pos.distanceTo(this.lastPos);
+    if (moved < 0.1) {
+      this.stuckTimer += dt;
+      if (this.stuckTimer > 3) {
+        this.heading += Math.PI + (Math.random() - 0.5) * 1.0;
+        this.stuckTimer = 0;
+      }
+    } else {
+      this.stuckTimer = 0;
+    }
+    this.lastPos.copy(this.pos);
+    
     // Flee a danger zone {x, z, r} (speeding car, gunfire, explosion).
     // Gang muscle does not run.
     if (danger && this.role !== 'gang' && dist2(this.pos.x, this.pos.z, danger.x, danger.z) < danger.r) {
@@ -160,6 +270,32 @@ export class Ped {
       if (Math.random() < dt * 0.15) this.heading += (Math.random() - 0.5) * 1.6;
       this.speed = this.walkSpeed;
     }
+    
+    // Sidewalk following - try to stay on sidewalk (9m from road center)
+    const lines = world.roads;
+    let nearestRoadDist = Infinity;
+    for (const l of lines) {
+      const d = Math.abs(this.pos.x - l);
+      if (d < nearestRoadDist) nearestRoadDist = d;
+      const d2 = Math.abs(this.pos.z - l);
+      if (d2 < nearestRoadDist) nearestRoadDist = d2;
+    }
+    // If too close to road center (< 6m), push toward sidewalk
+    if (nearestRoadDist < 6 && this.speed > 0) {
+      // Find which road we're near and push perpendicular
+      for (const l of lines) {
+        const dx = Math.abs(this.pos.x - l);
+        const dz = Math.abs(this.pos.z - l);
+        if (dx < 6) {
+          this.pos.x = l + (this.pos.x > l ? 9 : -9);
+        }
+        if (dz < 6) {
+          this.pos.z = l + (this.pos.z > l ? 9 : -9);
+        }
+      }
+    }
+    
+    // Move
     this.pos.x += Math.sin(this.heading) * this.speed * dt;
     this.pos.z += Math.cos(this.heading) * this.speed * dt;
     resolveCircleCollisions(world.colliders, this.pos, 0.5);
@@ -205,23 +341,27 @@ export class PedManager {
   }
 
   // Scatter peds on sidewalks (9 m off a road line) around a centre.
+  // Increased density and variety for a living city feel.
   spawn(count, center, radius) {
     const lines = this.world.roads;
     const onBeach = center.x > 205;
+    const roles = ['walker', 'walker', 'walker', 'jogger', 'walker', 'walker']; // 1/6 jogger
     for (let i = 0; i < count; i++) {
       if (onBeach) {
         const x = 214 + Math.random() * 30;
         const z = center.z + (Math.random() * 2 - 1) * radius;
-        this.peds.push(new Ped(this.scene, x, z, { role: 'beachgoer' }));
+        // Beach variety: beachgoers, joggers, vendors
+        const beachRoles = ['beachgoer', 'beachgoer', 'beachgoer', 'jogger', 'vendor'];
+        const role = pick(mulberry32(i * 977 + 13), beachRoles);
+        this.peds.push(new Ped(this.scene, x, z, { role }));
         continue;
       }
       const line = pick(mulberry32(i * 977 + 13), lines);
       const along = (Math.random() * 2 - 1) * radius + center.z;
       const onXRoad = Math.random() < 0.5;
-      const x = onXRoad ? line + 9 : along;
-      const z = onXRoad ? along : line + 9;
-      // About one walker in six is out for a run.
-      const role = Math.random() < 0.16 ? 'jogger' : 'walker';
+      const x = onXRoad ? line + 9 + (Math.random() - 0.5) * 2 : along + (Math.random() - 0.5) * 2;
+      const z = onXRoad ? along + (Math.random() - 0.5) * 2 : line + 9 + (Math.random() - 0.5) * 2;
+      const role = pick(mulberry32(i * 977 + 13), roles);
       this.peds.push(new Ped(this.scene, x, z, { role }));
     }
   }
@@ -352,14 +492,14 @@ export class PedManager {
       }
     }
     // Prune the long-dead far from the player to keep the scene light.
-    if (this.peds.length > 90) {
+    if (this.peds.length > 150) { // Increased from 90
       this.peds = this.peds.filter((p) => !p.dead || Math.random() < 0.5);
     }
     // Despawn: old ambient walkers far from the player leave. Rooted roles stay.
-    const ambient = (r) => r === 'walker' || r === 'jogger' || r === 'beachgoer';
+    const ambient = (r) => r === 'walker' || r === 'jogger' || r === 'beachgoer' || r === 'vendor';
     if (playerPos) {
       for (const p of [...this.peds]) {
-        if (!p.dead && ambient(p.role) && p.age > 10 && dist2(p.pos.x, p.pos.z, playerPos.x, playerPos.z) > 150) this.remove(p);
+        if (!p.dead && ambient(p.role) && p.age > 20 && dist2(p.pos.x, p.pos.z, playerPos.x, playerPos.z) > 200) this.remove(p); // Increased age and distance
       }
     }
     // No two walkers share the same space: push overlapping amblers apart.

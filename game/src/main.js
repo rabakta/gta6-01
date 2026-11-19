@@ -132,22 +132,31 @@ class Game {
     this.sunDisc = null;
     this.sunGlow = null;
 
-    this.traffic.spawn(14, { x: -140, z: 140 }, 150);
-    this.peds.spawn(24, { x: -140, z: 140 }, 120);
+    this.traffic.spawn(28, { x: -140, z: 140 }, 200);
+    this.peds.spawn(48, { x: -140, z: 140 }, 180);
     // A few parked cars near the start so the first minute has wheels.
     this.spawnParked('brisa', 0xc94f43, -120, 120, Math.PI / 2);
     this.spawnParked('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
     this.spawnParked('taxi', 0xf2a007, -160, 100, 0);
+    this.spawnParked('furia', 0xf2c230, -140, 180, Math.PI);
+    this.spawnParked('carguero', 0x8e2f32, -180, 140, -Math.PI / 2);
     // The city wakes up: waiters, performer, vendors, parked rides, groups.
-    for (const stop of this.world.busStops.slice(0, 2)) this.peds.spawnWaiters(stop, 2);
+    for (const stop of this.world.busStops.slice(0, 4)) this.peds.spawnWaiters(stop, 3);
     this.peds.spawnPerformer(PERFORMER_SPOT.x, PERFORMER_SPOT.z);
     this.peds.spawnVendors(this.world.vendorSpots);
     for (const s of PARKED_SPOTS) this.spawnParked(s.defKey, s.color, s.x, s.z, s.heading);
+    // More parked cars throughout city
+    this.spawnParked('brisa', 0x4a6fa5, 60, -60, 0);
+    this.spawnParked('vento', 0xe8c84a, -60, 60, Math.PI);
+    this.spawnParked('taxi', 0xf2a007, 120, -120, Math.PI / 2);
+    this.spawnParked('brisa', 0xd94f43, -180, -180, 0);
     this.peds.spawnGroup(-132, 130, 3);
     this.peds.spawnGroup(-110, 150, 2);
+    this.peds.spawnGroup(100, -100, 3);
+    this.peds.spawnGroup(0, 180, 2);
     // Gang muscle holds its turf from the start; heat rises when Rio hits them.
     this.gangHeat = [0, 0];
-    for (const g of GANGS) this.peds.spawnGang(g, 3);
+    for (const g of GANGS) this.peds.spawnGang(g, 5);
 
     this.bindInput();
     this.touch = new TouchControls({
@@ -1009,18 +1018,18 @@ class Game {
       : this.nearCar ? 'E — Steal the ' + this.nearCar.def.label : null;
 
     // Keep the city populated around the player.
-    if (this.traffic.cars.filter((c) => !c.dead).length < 10) this.traffic.spawn(4, p.pos, 130);
-    if (this.peds.peds.filter((x) => !x.dead).length < 16) this.peds.spawn(6, p.pos, 100);
+    if (this.traffic.cars.filter((c) => !c.dead).length < 18) this.traffic.spawn(6, p.pos, 150);
+    if (this.peds.peds.filter((x) => !x.dead).length < 32) this.peds.spawn(10, p.pos, 130);
     // Keep the bus stops staffed — when the waiters thin out, send
     // two more to a random stop. A stop with no waiters is just a bench.
-    if (this.peds.waiters().length < 4) {
+    if (this.peds.waiters().length < 6) {
       const stop = this.world.busStops[Math.floor(Math.random() * this.world.busStops.length)];
-      this.peds.spawnWaiters(stop, 2);
+      this.peds.spawnWaiters(stop, 3);
     }
     // A fresh walking group now and then, so the sidewalks are not
     // only lone walkers.
-    if (this.peds.peds.filter((x) => !x.dead && x.role === 'group').length < 3 && Math.random() < dt * 0.1) {
-      this.peds.spawnGroup(p.pos.x + 20, p.pos.z + 10, 3);
+    if (this.peds.peds.filter((x) => !x.dead && x.role === 'group').length < 5 && Math.random() < dt * 0.15) {
+      this.peds.spawnGroup(p.pos.x + 20, p.pos.z + 10, 4);
     }
 
     // Sea shimmer + camera + HUD.

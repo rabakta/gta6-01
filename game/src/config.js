@@ -125,9 +125,14 @@ export const GANGS = [
 // Shops on the map corners. `kind` picks the stock list in main.js.
 // ---------------------------------------------------------------------------
 export const SHOPS = [
-  { kind: 'guns',   name: 'IRONWORKS',  pos: [-150, -60],  blurb: 'Guns, ammo, armour' },
-  { kind: 'garage', name: 'GARAGE 24',  pos: [150, -150],  blurb: 'Upgrades - Respray - Repair' },
-  { kind: 'food',   name: 'TACO SOL',   pos: [-60, 150],   blurb: 'Hot food restores health' },
+  { kind: 'guns',   name: 'AMMU-NATION',  pos: [-150, -60],  blurb: 'Guns, ammo, armour' },
+  { kind: 'guns',   name: 'AMMU-NATION',  pos: [150, 60],    blurb: 'Guns, ammo, armour' },
+  { kind: 'guns',   name: 'AMMU-NATION',  pos: [-60, -150],  blurb: 'Guns, ammo, armour' },
+  { kind: 'garage', name: 'GARAGE 24',    pos: [150, -150],  blurb: 'Upgrades - Respray - Repair' },
+  { kind: 'garage', name: 'AUTO HAVEN',   pos: [-150, 60],   blurb: 'Upgrades - Respray - Repair' },
+  { kind: 'food',   name: 'TACO SOL',     pos: [-60, 150],   blurb: 'Hot food restores health' },
+  { kind: 'food',   name: 'BURGER SHOT',  pos: [60, -150],   blurb: 'Hot food restores health' },
+  { kind: 'food',   name: 'CLUCKIN BELL', pos: [0, 180],     blurb: 'Hot food restores health' },
 ];
 
 // ---------------------------------------------------------------------------

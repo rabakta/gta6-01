@@ -46,27 +46,48 @@ function box(w, h, d) {
   if (!g) { g = new THREE.BoxGeometry(w, h, d); boxCache.set(k, g); }
   return g;
 }
+
+// PBR Materials for cars
 const bodyMats = new Map();
 function bodyMat(colorHex) {
   let m = bodyMats.get(colorHex);
-  if (!m) { m = new THREE.MeshPhongMaterial({ color: colorHex, shininess: 70, specular: 0x555555 }); bodyMats.set(colorHex, m); }
+  if (!m) { 
+    m = new THREE.MeshStandardMaterial({ 
+      color: colorHex, 
+      roughness: 0.35, 
+      metalness: 0.85,
+      clearcoat: 0.5,
+      clearcoatRoughness: 0.1
+    }); 
+    bodyMats.set(colorHex, m); 
+  }
   return m;
 }
-const darkMat = new THREE.MeshLambertMaterial({ color: 0x16181d });
-const glassMat = new THREE.MeshPhongMaterial({ color: 0x9fc4d8, shininess: 120, specular: 0x888888 });
+const darkMat = new THREE.MeshStandardMaterial({ color: 0x16181d, roughness: 0.5, metalness: 0.2 });
+const glassMat = new THREE.MeshPhysicalMaterial({ 
+  color: 0x9fc4d8, 
+  roughness: 0.05, 
+  metalness: 0.0,
+  transmission: 0.85,
+  thickness: 0.5,
+  ior: 1.5,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.05
+});
 const headLensMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
-const hubMat = new THREE.MeshLambertMaterial({ color: 0x8a8f96 });
+const tailLensMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a });
+const hubMat = new THREE.MeshStandardMaterial({ color: 0x8a8f96, roughness: 0.3, metalness: 0.8 });
+const brakeMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.9, metalness: 0.1 });
+const grilleMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4, metalness: 0.6 });
 
-// Headlight/taillight halos — shared glow sprite materials, created
-// lazily so importing this module in Node (logic tests) never touches the
-// DOM before the test stubs exist.
+// Headlight/taillight halos
 let headGlowMat = null;
 let tailGlowMat = null;
 function lightGlowMats() {
   if (!headGlowMat) {
     const tex = glowTexture();
-    headGlowMat = new THREE.SpriteMaterial({ map: tex, color: 0xffe9a8, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
-    tailGlowMat = new THREE.SpriteMaterial({ map: tex, color: 0xff3a3a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
+    headGlowMat = new THREE.SpriteMaterial({ map: tex, color: 0xffe9a8, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false });
+    tailGlowMat = new THREE.SpriteMaterial({ map: tex, color: 0xff2a2a, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
   }
   return { headGlowMat, tailGlowMat };
 }
@@ -75,15 +96,16 @@ function lightGlowMats() {
 // hood and trunk level, a sloped glasshouse, bumpers, mirrors and (on the
 // sporty types) a spoiler. w = body width, hood/trunk = level lengths,
 // cabZ/cabL/cabH = glasshouse placement. All original, built from boxes.
+// Updated with more realistic proportions and detail allowances.
 const SHAPE = {
-  brisa:    { w: 1.9, L: 4.4, hood: 1.15, trunk: 0.85, cabZ: -0.15, cabL: 2.0, cabH: 0.55, spoiler: 0 },
-  vento:    { w: 2.0, L: 4.6, hood: 1.5, trunk: 0.7, cabZ: -0.45, cabL: 1.7, cabH: 0.45, spoiler: 1 },
-  furia:    { w: 2.0, L: 4.8, hood: 1.7, trunk: 0.6, cabZ: -0.55, cabL: 1.6, cabH: 0.45, spoiler: 1 },
-  carguero: { w: 1.9, L: 5.4, hood: 1.0, trunk: 0, cabZ: 1.25, cabL: 1.4, cabH: 0.55, spoiler: 0 },
-  caminar:  { w: 1.9, L: 5.4, hood: 1.2, trunk: 0, cabZ: 1.55, cabL: 1.4, cabH: 0.55, spoiler: 0 },
-  taxi:     { w: 1.9, L: 4.4, hood: 1.15, trunk: 0.85, cabZ: -0.15, cabL: 2.0, cabH: 0.55, spoiler: 0 },
-  bus:      { w: 1.95, L: 7.6, hood: 0.5, trunk: 0, cabZ: -0.3, cabL: 6.4, cabH: 0.5, spoiler: 0 },
-  police:   { w: 1.9, L: 4.4, hood: 1.15, trunk: 0.85, cabZ: -0.15, cabL: 2.0, cabH: 0.55, spoiler: 0 },
+  brisa:    { w: 1.85, L: 4.5, hood: 1.2, trunk: 0.9, cabZ: -0.2, cabL: 2.0, cabH: 0.55, spoiler: 0, roofH: 0.45, bumperH: 0.3 },
+  vento:    { w: 1.9, L: 4.7, hood: 1.5, trunk: 0.7, cabZ: -0.5, cabL: 1.7, cabH: 0.45, spoiler: 1, roofH: 0.4, bumperH: 0.3 },
+  furia:    { w: 1.95, L: 4.9, hood: 1.8, trunk: 0.5, cabZ: -0.6, cabL: 1.5, cabH: 0.4, spoiler: 1, roofH: 0.35, bumperH: 0.25 },
+  carguero: { w: 2.0, L: 5.6, hood: 1.1, trunk: 0, cabZ: 1.3, cabL: 1.5, cabH: 0.55, spoiler: 0, roofH: 0.5, bumperH: 0.4 },
+  caminar:  { w: 2.1, L: 5.8, hood: 1.3, trunk: 0, cabZ: 1.6, cabL: 1.5, cabH: 0.6, spoiler: 0, roofH: 0.5, bumperH: 0.4 },
+  taxi:     { w: 1.85, L: 4.5, hood: 1.2, trunk: 0.9, cabZ: -0.2, cabL: 2.0, cabH: 0.55, spoiler: 0, roofH: 0.45, bumperH: 0.3 },
+  bus:      { w: 2.2, L: 8.0, hood: 0.6, trunk: 0, cabZ: -0.4, cabL: 6.8, cabH: 0.6, spoiler: 0, roofH: 0.6, bumperH: 0.4 },
+  police:   { w: 1.85, L: 4.5, hood: 1.2, trunk: 0.9, cabZ: -0.2, cabL: 2.0, cabH: 0.55, spoiler: 0, roofH: 0.45, bumperH: 0.3 },
 };
 
 export function makeCarMesh(defKey, colorHex) {
@@ -97,6 +119,7 @@ export function makeCarMesh(defKey, colorHex) {
   const isBus = defKey === 'bus';
   const longBody = isTruck || isVan || isBus;
   const bodyLen = isBike ? 2.2 : sh.L;
+  const halfLen = bodyLen / 2;
 
   // A bike is a narrow frame with a rider, not a car body — build it
   // here and return early, before the car-only parts below.

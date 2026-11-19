@@ -103,78 +103,103 @@ export function buildCity(scene) {
     v5counts,
   };
 
-  // Sky: three-stop sunset dome (orange horizon, rose mid, deep blue top)
-  // + fog so the far sea melts into the sun.
-  const skyGeo = new THREE.SphereGeometry(900, 24, 16);
-  const skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    uniforms: {
-      top: { value: new THREE.Color(PALETTE.skyTop) },
-      mid: { value: new THREE.Color(0xe86a7a) },
-      horizon: { value: new THREE.Color(PALETTE.skyHorizon) },
-    },
-    vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; void main(){ float h = normalize(vP).y; vec3 c = mix(horizon, mid, smoothstep(0.0, 0.28, h)); c = mix(c, top, smoothstep(0.22, 0.6, h)); gl_FragColor = vec4(c, 1.0); }',
-  });
-  scene.add(new THREE.Mesh(skyGeo, skyMat));
-  scene.fog = new THREE.Fog(PALETTE.fog, 220, 700);
+  // Sky: five-stop gradient dome (deep night -> dawn -> day -> dusk -> night)
+  // + volumetric fog so the far sea melts into the horizon.
+    const skyGeo = new THREE.SphereGeometry(900, 32, 24);
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        top: { value: new THREE.Color(PALETTE.skyTop) },
+        upperMid: { value: new THREE.Color(0x5a4a6a) },
+        mid: { value: new THREE.Color(0xe86a7a) },
+        lowerMid: { value: new THREE.Color(0xffb87a) },
+        horizon: { value: new THREE.Color(PALETTE.skyHorizon) },
+        sunPos: { value: new THREE.Vector3(-160, 190, -120).normalize() },
+      },
+      vertexShader: 'varying vec3 vP; varying vec3 vNormal; void main(){ vP = position; vNormal = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'varying vec3 vP; varying vec3 vNormal; uniform vec3 top; uniform vec3 upperMid; uniform vec3 mid; uniform vec3 lowerMid; uniform vec3 horizon; uniform vec3 sunPos; void main(){ float h = normalize(vP).y; float sunDot = max(0.0, dot(normalize(vP), sunPos)); vec3 c = mix(horizon, lowerMid, smoothstep(0.0, 0.15, h)); c = mix(c, mid, smoothstep(0.1, 0.35, h)); c = mix(c, upperMid, smoothstep(0.25, 0.55, h)); c = mix(c, top, smoothstep(0.45, 0.75, h)); float sunGlow = pow(sunDot, 32.0) * 0.8; c += vec3(1.0, 0.6, 0.3) * sunGlow; gl_FragColor = vec4(c, 1.0); }',
+    });
+    scene.add(new THREE.Mesh(skyGeo, skyMat));
+    // Dynamic fog - closer at night, further at day
+    scene.fog = new THREE.Fog(PALETTE.fog, 180, 800);
 
-  // Sun + ambient light. The graphics round deepens the contrast: a
-  // hotter sun, a dimmer hemisphere, so the shadows bite and the lit
-  // windows read.
-  const sun = new THREE.DirectionalLight(PALETTE.sun, PALETTE.sunIntensity);
-  sun.position.set(-160, 190, -120);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -260;
-  sun.shadow.camera.right = 260;
-  sun.shadow.camera.top = 260;
-  sun.shadow.camera.bottom = -260;
-  sun.shadow.camera.far = 700;
-  scene.add(sun);
-  world.sun = sun;
-  const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.7);
-  scene.add(hemi);
-  world.hemiLight = hemi;
-  world.skyMaterial = skyMat;
+    // Sun + ambient light. Hotter sun, dimmer hemisphere for contrast.
+    const sun = new THREE.DirectionalLight(PALETTE.sun, PALETTE.sunIntensity);
+    sun.position.set(-160, 190, -120);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -280;
+    sun.shadow.camera.right = 280;
+    sun.shadow.camera.top = 280;
+    sun.shadow.camera.bottom = -280;
+    sun.shadow.camera.far = 800;
+    sun.shadow.bias = -0.0005;
+    sun.shadow.normalBias = 0.02;
+    scene.add(sun);
+    world.sun = sun;
+    const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.55);
+    scene.add(hemi);
+    world.hemiLight = hemi;
+    world.skyMaterial = skyMat;
 
-  // The sun itself, low in the west, with a halo that bleeds into the
-  // haze. The disc sits on the sky dome so it reads in every wide shot.
-  const sunDir = new THREE.Vector3(-160, 190, -120).normalize();
-  const sunDisc = new THREE.Mesh(
-    new THREE.CircleGeometry(34, 24),
-    new THREE.MeshBasicMaterial({ color: 0xffe9b8, fog: false }),
-  );
-  sunDisc.position.copy(sunDir).multiplyScalar(830);
-  sunDisc.lookAt(0, 0, 0);
-  scene.add(sunDisc);
-  const sunGlowTex = glowTexture();
-  const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: sunGlowTex, color: 0xffc27a, transparent: true, opacity: 0.85,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-  }));
-  sunGlow.position.copy(sunDir).multiplyScalar(820);
-  sunGlow.scale.setScalar(260);
-  scene.add(sunGlow);
-  world.sunDisc = sunDisc;
-  world.sunGlow = sunGlow;
-
-  // Low warm clouds, so the sky has depth instead of a flat gradient.
-  // A fresh seeded stream — the shared rng is untouched, the city layout
-  // cannot shift under them.
-  const cloudRng = mulberry32(20261119);
-  for (let i = 0; i < 8; i++) {
-    const cloud = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: sunGlowTex, color: 0xffe8cc, transparent: true,
-      opacity: 0.30 + cloudRng() * 0.15, depthWrite: false, fog: false,
+    // The sun itself, low in the west, with a halo that bleeds into the haze.
+    const sunDir = new THREE.Vector3(-160, 190, -120).normalize();
+    const sunDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(38, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfff2c8, transparent: true, opacity: 0.95, fog: false }),
+    );
+    sunDisc.position.copy(sunDir).multiplyScalar(830);
+    sunDisc.lookAt(0, 0, 0);
+    scene.add(sunDisc);
+    const sunGlowTex = glowTexture();
+    const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunGlowTex, color: 0xffd48a, transparent: true, opacity: 0.9,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
     }));
-    cloud.position.set(-500 + cloudRng() * 1100, 200 + cloudRng() * 110, -500 + cloudRng() * 1000);
-    cloud.scale.set(160 + cloudRng() * 120, 55 + cloudRng() * 35, 1);
-    cloud.userData.v5kind = 'cloud';
-    scene.add(cloud);
-    v5counts.clouds++;
-  }
+    sunGlow.position.copy(sunDir).multiplyScalar(820);
+    sunGlow.scale.setScalar(280);
+    scene.add(sunGlow);
+    world.sunDisc = sunDisc;
+    world.sunGlow = sunGlow;
+
+    // Volumetric light shafts (god rays) - simplified as large sprites
+    for (let i = 0; i < 4; i++) {
+      const shaft = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: sunGlowTex, color: 0xfff2c8, transparent: true, opacity: 0.04,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+      }));
+      shaft.position.copy(sunDir).multiplyScalar(400 + i * 100);
+      shaft.scale.setScalar(400 + i * 100);
+      shaft.rotation.z = (Math.random() - 0.5) * 0.5;
+      scene.add(shaft);
+    }
+
+    // Low warm clouds, so the sky has depth instead of a flat gradient.
+    const cloudRng = mulberry32(20261119);
+    for (let i = 0; i < 16; i++) {
+      const cloud = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: sunGlowTex, color: 0xffe8cc, transparent: true,
+        opacity: 0.20 + cloudRng() * 0.15, depthWrite: false, fog: false,
+      }));
+      cloud.position.set(-500 + cloudRng() * 1100, 180 + cloudRng() * 140, -500 + cloudRng() * 1000);
+      cloud.scale.set(180 + cloudRng() * 150, 60 + cloudRng() * 50, 1);
+      cloud.userData.v5kind = 'cloud';
+      scene.add(cloud);
+      v5counts.clouds++;
+    }
+  
+    // High cirrus clouds
+    for (let i = 0; i < 8; i++) {
+      const cloud = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: sunGlowTex, color: 0xf2e8d8, transparent: true,
+        opacity: 0.10 + cloudRng() * 0.08, depthWrite: false, fog: false,
+      }));
+      cloud.position.set(-600 + cloudRng() * 1200, 300 + cloudRng() * 100, -600 + cloudRng() * 1200);
+      cloud.scale.set(250 + cloudRng() * 200, 30 + cloudRng() * 20, 1);
+      cloud.userData.v5kind = 'cirrus';
+      scene.add(cloud);
+    }
 
   // Ground slab + sand beyond the beach.
   const pavementTex = pavementTexture();
@@ -581,21 +606,37 @@ export function buildCity(scene) {
   scene.add(board3Halo);
   v5counts.halos++;
 
-  // Palm trees along the beach and a few avenues.
-  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5a38 });
-  const frondMat = new THREE.MeshLambertMaterial({ color: 0x3f7a44, side: THREE.DoubleSide });
-  const trunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 6);
-  const frondGeo = new THREE.ConeGeometry(3.4, 1.6, 7);
+  // Vegetation system: multiple tree types for variety
+  // Palm trees (beach/tropical)
+  const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9, metalness: 0.0 });
+  const palmFrondMat = new THREE.MeshStandardMaterial({ color: 0x3f7a44, side: THREE.DoubleSide, roughness: 0.8, metalness: 0.0, alphaTest: 0.5 });
+  const palmTrunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 6);
+  const palmFrondGeo = new THREE.ConeGeometry(3.4, 1.6, 7);
+  
+  // Broadleaf trees (city parks, streets)
+  const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.95, metalness: 0.0 });
+  const treeLeafMat = new THREE.MeshStandardMaterial({ color: 0x4a7a44, side: THREE.DoubleSide, roughness: 0.85, metalness: 0.0, alphaTest: 0.5 });
+  const treeTrunkGeo = new THREE.CylinderGeometry(0.4, 0.7, 5, 6);
+  const treeLeafGeo = new THREE.SphereGeometry(3.5, 8, 6);
+  
+  // Pine trees (northern areas)
+  const pineTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.95, metalness: 0.0 });
+  const pineLeafMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, side: THREE.DoubleSide, roughness: 0.9, metalness: 0.0 });
+  const pineTrunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 6, 6);
+  const pineLeafGeo = new THREE.ConeGeometry(2.5, 4, 6);
+
   function plantPalm(x, z, s = 1) {
     const g = new THREE.Group();
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    const trunk = new THREE.Mesh(palmTrunkGeo, palmTrunkMat);
     trunk.position.y = 3.5;
     trunk.rotation.z = (rng() - 0.5) * 0.16;
     trunk.castShadow = true;
-    const fronds = new THREE.Mesh(frondGeo, frondMat);
+    trunk.receiveShadow = true;
+    const fronds = new THREE.Mesh(palmFrondGeo, palmFrondMat);
     fronds.position.y = 7.4;
     fronds.scale.y = 0.55;
     fronds.castShadow = true;
+    fronds.receiveShadow = true;
     g.add(trunk, fronds);
     g.position.set(x, 0, z);
     g.scale.setScalar(s);
@@ -603,29 +644,118 @@ export function buildCity(scene) {
     world.palms.push(g);
     colliders.push({ minX: x - 0.6, maxX: x + 0.6, minZ: z - 0.6, maxZ: z + 0.6 });
   }
-  for (let z = -200; z <= 200; z += 26) plantPalm(216 + rng() * 8, z, 0.9 + rng() * 0.5);
-  for (let x = -180; x <= 180; x += 60) {
-    plantPalm(x + 9, -195);
-    plantPalm(x - 9, 195);
+  
+  function plantTree(x, z, s = 1) {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(treeTrunkGeo, treeTrunkMat);
+    trunk.position.y = 2.5;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    const leaves = new THREE.Mesh(treeLeafGeo, treeLeafMat);
+    leaves.position.y = 6.5;
+    leaves.scale.set(1, 0.7, 1);
+    leaves.castShadow = true;
+    leaves.receiveShadow = true;
+    g.add(trunk, leaves);
+    g.position.set(x, 0, z);
+    g.scale.setScalar(s);
+    scene.add(g);
+    colliders.push({ minX: x - 1.2, maxX: x + 1.2, minZ: z - 1.2, maxZ: z + 1.2 });
   }
-  // A palm cluster around the pier, so the south beach is not bare.
-  for (let i = 0; i < 6; i++) plantPalm(220 + rng() * 14, -70 + rng() * 60, 0.9 + rng() * 0.4);
+  
+  function plantPine(x, z, s = 1) {
+    const g = new THREE.Group();
+    const trunk = new THREE.Mesh(pineTrunkGeo, pineTrunkMat);
+    trunk.position.y = 3;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    const leaves = new THREE.Mesh(pineLeafGeo, pineLeafMat);
+    leaves.position.y = 6;
+    leaves.castShadow = true;
+    leaves.receiveShadow = true;
+    g.add(trunk, leaves);
+    g.position.set(x, 0, z);
+    g.scale.setScalar(s);
+    scene.add(g);
+    colliders.push({ minX: x - 1, maxX: x + 1, minZ: z - 1, maxZ: z + 1 });
+  }
 
-  // Beach umbrellas: striped cones on poles, scattered on the sand.
-  const umbrellaCols = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5];
-  const umbrellaPoleMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
+  // Palm trees along the beach - MORE DENSE
+  for (let z = -200; z <= 200; z += 18) plantPalm(216 + rng() * 10, z, 0.9 + rng() * 0.5);
+  for (let z = -200; z <= 200; z += 18) plantPalm(228 + rng() * 8, z, 0.8 + rng() * 0.4);
+  // Avenues with palms
+  for (let x = -180; x <= 180; x += 30) {
+    plantPalm(x + 9, -195, 1 + rng() * 0.3);
+    plantPalm(x - 9, 195, 1 + rng() * 0.3);
+  }
+  // Palm cluster around the pier
+  for (let i = 0; i < 12; i++) plantPalm(220 + rng() * 20, -80 + rng() * 80, 0.9 + rng() * 0.4);
+  
+  // Broadleaf trees in city - along streets and in plazas
+  for (const l of lines) {
+    for (let v = -180; v <= 180; v += 40) {
+      // Trees on sidewalks (12m from road center)
+      plantTree(l + 12, v, 0.9 + rng() * 0.3);
+      plantTree(l - 12, v, 0.9 + rng() * 0.3);
+      plantTree(v, l + 12, 0.9 + rng() * 0.3);
+      plantTree(v, l - 12, 0.9 + rng() * 0.3);
+    }
+  }
+  
+  // Pine trees in northern areas
+  for (let i = 0; i < 30; i++) {
+    const x = -180 + rng() * 100;
+    const z = 50 + rng() * 120;
+    plantPine(x, z, 0.8 + rng() * 0.5);
+  }
+  
+  // Park trees - central plaza areas
+  for (const [px, pz] of [[0, 0], [0, 60], [60, 0], [60, 60], [-60, -60], [-60, 60], [60, -60]]) {
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const r = 8 + rng() * 4;
+      plantTree(px + Math.sin(angle) * r, pz + Math.cos(angle) * r, 1 + rng() * 0.3);
+    }
+  }
+
+  // Beach umbrellas: MORE
+  const umbrellaCols = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5, 0xff6b6b, 0x6bcb77];
+  const umbrellaPoleMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.8 });
   const poleGeoU = new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6);
   const canopyGeo = new THREE.ConeGeometry(2.2, 1.1, 8);
-  for (let i = 0; i < 14; i++) {
-    const ux = 218 + rng() * 22;
+  for (let i = 0; i < 28; i++) {
+    const ux = 218 + rng() * 25;
     const uz = -190 + rng() * 380;
     const pole = new THREE.Mesh(poleGeoU, umbrellaPoleMat);
     pole.position.set(ux, 1.3, uz);
-    const canopy = new THREE.Mesh(canopyGeo, new THREE.MeshLambertMaterial({ color: umbrellaCols[i % umbrellaCols.length], side: THREE.DoubleSide }));
+    const canopy = new THREE.Mesh(canopyGeo, new THREE.MeshStandardMaterial({ color: umbrellaCols[i % umbrellaCols.length], side: THREE.DoubleSide, roughness: 0.8 }));
     canopy.position.set(ux, 3, uz);
     canopy.castShadow = true;
     scene.add(pole, canopy);
     colliders.push({ minX: ux - 0.3, maxX: ux + 0.3, minZ: uz - 0.3, maxZ: uz + 0.3 });
+  }
+  
+  // Beach towels/chairs for more life
+  const towelColors = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5, 0xff6b6b];
+  for (let i = 0; i < 20; i++) {
+    const tx = 215 + rng() * 20;
+    const tz = -180 + rng() * 360;
+    const towel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.8), new THREE.MeshStandardMaterial({ color: towelColors[i % towelColors.length], roughness: 0.9, side: THREE.DoubleSide }));
+    towel.rotation.x = -Math.PI / 2;
+    towel.position.set(tx, 0.07, tz);
+    towel.rotation.z = (rng() - 0.5) * 1.0;
+    scene.add(towel);
+  }
+  
+  // Beach coolers
+  for (let i = 0; i < 10; i++) {
+    const cx = 215 + rng() * 20;
+    const cz = -180 + rng() * 360;
+    const cooler = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x4a6fa5, roughness: 0.6 }));
+    cooler.position.set(cx, 0.25, cz);
+    cooler.castShadow = true;
+    scene.add(cooler);
+    colliders.push({ minX: cx - 0.3, maxX: cx + 0.3, minZ: cz - 0.2, maxZ: cz + 0.2 });
   }
 
   // Street lamps: warm glow on every third lamp.
