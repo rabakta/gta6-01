@@ -379,8 +379,8 @@ export const PARKED_SPOTS = [
 // Birds: flocks circling the lighthouse and the pier. Each flock is an
 // anchor point, a count and an orbit radius band.
 export const BIRD_FLOCKS = [
-  { x: 246, z: 100, count: 5, radius: 24, height: 34 },
-  { x: 274, z: -40, count: 4, radius: 18, height: 28 },
+  { x: 246, z: 100, count: 3, radius: 24, height: 34 }, // reduced from 5
+  { x: 274, z: -40, count: 2, radius: 18, height: 28 }, // reduced from 4
 ];
 
 // The street performer holds court at the Plaza, ringed by watchers.

@@ -8,13 +8,13 @@ import { makeCanvas, mulberry32, pick } from './utils.js';
 const HD = {
   ALBEDO: 512,      // color/emissive
   NORMAL: 256,      // macro normal
-  DETAIL: 512,      // detail normal (high-freq)
+  DETAIL: 256,      // detail normal (high-freq) - reduced from 512
   HEIGHT: 256,      // height/displacement
-  ROUGHNESS: 512,   // roughness
-  METALNESS: 512,   // metalness
+  ROUGHNESS: 256,   // roughness - reduced from 512
+  METALNESS: 256,   // metalness - reduced from 512
   AO: 256,          // ambient occlusion
-  CLEARCOAT: 512,   // car clearcoat normal
-  ANISO: 16,        // max anisotropy
+  CLEARCOAT: 256,   // car clearcoat normal - reduced from 512
+  ANISO: 8,         // max anisotropy - reduced from 16
 };
 
 // ─── CACHES ─────────────────────────────────────────────────
@@ -780,3 +780,4 @@ export function barrierTexture() {
   tex.anisotropy = HD.ANISO;
   return tex;
 }
+export { generateClearcoatNormal };

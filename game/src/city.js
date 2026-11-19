@@ -362,7 +362,7 @@ export function buildCity(scene) {
   const kerbGeoZ = new THREE.PlaneGeometry(1.2, roadLen);
   const kerbGeoX = new THREE.PlaneGeometry(roadLen, 1.2);
   for (const l of roadLines()) {
-    for (const off of [-7.6, 7.6]) {
+    for (const off of [-7, 7]) {
       const kz = new THREE.Mesh(kerbGeoZ, kerbMat);
       kz.rotation.x = -Math.PI / 2;
       kz.position.set(l + off, 0.09, 0);
@@ -382,64 +382,67 @@ export function buildCity(scene) {
 
   // A zebra crossing on every intersection, plaza tiles on the four
   // central ones instead. One shared geometry and material each.
-    const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
-    const crossTex = crosswalkTexture();
-    const crossMat = new THREE.MeshStandardMaterial({ 
-      map: crossTex.map, 
-      roughnessMap: crossTex.roughnessMap,
-      metalnessMap: crossTex.metalnessMap,
-      normalMap: crossTex.normalMap,
-      normalScale: new THREE.Vector2(0.5, 0.5),
-      displacementMap: crossTex.displacementMap,
-      displacementScale: crossTex.displacementScale || 0.02,
-      aoMap: crossTex.aoMap,
-      aoMapIntensity: 1.0,
-      detailNormalMap: crossTex.detailNormalMap,
-      detailNormalScale: new THREE.Vector2(1, 1),
-      clearcoatNormalMap: crossTex.clearcoatNormalMap,
-      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
-    });
-    const plazaTex = plazaTexture();
-    const plazaMat = new THREE.MeshStandardMaterial({ 
-      map: plazaTex.map, 
-      roughnessMap: plazaTex.roughnessMap,
-      metalnessMap: plazaTex.metalnessMap,
-      normalMap: plazaTex.normalMap,
-      normalScale: new THREE.Vector2(0.7, 0.7),
-      displacementMap: plazaTex.displacementMap,
-      displacementScale: plazaTex.displacementScale || 0.015,
-      aoMap: plazaTex.aoMap,
-      aoMapIntensity: 1.0,
-      detailNormalMap: plazaTex.detailNormalMap,
-      detailNormalScale: new THREE.Vector2(1, 1),
-      clearcoatNormalMap: plazaTex.clearcoatNormalMap,
-      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
-    });
-  const plazaGeo = new THREE.PlaneGeometry(16, 16);
-  const lines = roadLines();
-  lines.forEach((lx, ix) => {
-    lines.forEach((lz, iz) => {
-      if (PLAZA_SPOTS.some(([px, pz]) => px === lx && pz === lz)) {
-        const plaza = new THREE.Mesh(plazaGeo, plazaMat);
-        plaza.rotation.x = -Math.PI / 2;
-        plaza.position.set(lx, 0.1, lz);
-        plaza.receiveShadow = true;
-        plaza.userData.v5kind = 'plaza';
-        scene.add(plaza);
-        v5counts.plazas++;
-        return;
-      }
-      const cross = new THREE.Mesh(crossGeo, crossMat);
-      cross.rotation.x = -Math.PI / 2;
-      // Alternate the stripe direction so the grid does not repeat one way.
-      cross.rotation.z = (ix + iz) % 2 === 0 ? 0 : Math.PI / 2;
-      cross.position.set(lx, 0.1, lz);
-      cross.receiveShadow = true;
-      cross.userData.v5kind = 'crosswalk';
-      scene.add(cross);
-      v5counts.crosswalks++;
-    });
-  });
+    const crosswalkWidth = 4; // standard crossing width
+      const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, crosswalkWidth);
+      const crossTex = crosswalkTexture();
+      const crossMat = new THREE.MeshStandardMaterial({ 
+        map: crossTex.map, 
+        roughnessMap: crossTex.roughnessMap,
+        metalnessMap: crossTex.metalnessMap,
+        normalMap: crossTex.normalMap,
+        normalScale: new THREE.Vector2(0.5, 0.5),
+        displacementMap: crossTex.displacementMap,
+        displacementScale: crossTex.displacementScale || 0.02,
+        aoMap: crossTex.aoMap,
+        aoMapIntensity: 1.0,
+        detailNormalMap: crossTex.detailNormalMap,
+        detailNormalScale: new THREE.Vector2(1, 1),
+        clearcoatNormalMap: crossTex.clearcoatNormalMap,
+        clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+      });
+      const plazaTex = plazaTexture();
+      const plazaMat = new THREE.MeshStandardMaterial({ 
+        map: plazaTex.map, 
+        roughnessMap: plazaTex.roughnessMap,
+        metalnessMap: plazaTex.metalnessMap,
+        normalMap: plazaTex.normalMap,
+        normalScale: new THREE.Vector2(0.7, 0.7),
+        displacementMap: plazaTex.displacementMap,
+        displacementScale: plazaTex.displacementScale || 0.015,
+        aoMap: plazaTex.aoMap,
+        aoMapIntensity: 1.0,
+        detailNormalMap: plazaTex.detailNormalMap,
+        detailNormalScale: new THREE.Vector2(1, 1),
+        clearcoatNormalMap: plazaTex.clearcoatNormalMap,
+        clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+      });
+      const plazaGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
+      const lines = roadLines();
+      lines.forEach((lx, ix) => {
+        lines.forEach((lz, iz) => {
+          if (PLAZA_SPOTS.some(([px, pz]) => px === lx && pz === lz)) {
+            const plaza = new THREE.Mesh(plazaGeo, plazaMat);
+            plaza.rotation.x = -Math.PI / 2;
+            plaza.position.set(lx, 0.1, lz);
+            plaza.receiveShadow = true;
+            plaza.userData.v5kind = 'plaza';
+            scene.add(plaza);
+            v5counts.plazas++;
+            return;
+          }
+          // Two crosswalks per intersection: one for each road direction
+          for (let rot = 0; rot < 2; rot++) {
+            const cross = new THREE.Mesh(crossGeo, crossMat);
+            cross.rotation.x = -Math.PI / 2;
+            cross.rotation.z = rot * Math.PI / 2;
+            cross.position.set(lx, 0.1, lz);
+            cross.receiveShadow = true;
+            cross.userData.v5kind = 'crosswalk';
+            scene.add(cross);
+            v5counts.crosswalks++;
+          }
+        });
+      });
 
   // Buildings: one block per grid cell, 1-3 towers each, pastel facades.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
