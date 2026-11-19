@@ -8,6 +8,7 @@ import { Player } from './player.js';
 import { PedManager } from './pedestrians.js';
 import { Combat, ParticleSystem } from './combat.js';
 import { MissionManager } from './missions.js';
+import { CutsceneManager } from './cutscene.js';
 import { PickupManager } from './pickups.js';
 import { TaxiManager } from './taxi.js';
 import { CollectibleManager } from './collectibles.js';
@@ -61,6 +62,7 @@ class Game {
     this.peds = new PedManager(this.scene, this.world);
     this.combat = new Combat(this.scene, this.particles);
     this.missions = new MissionManager(this);
+    this.cutscenes = new CutsceneManager(this);
     this.pickups = new PickupManager(this.scene, this.world);
     // The side activities — taxi fares and collectible packages.
     this.taxi = new TaxiManager(this);
@@ -1075,6 +1077,8 @@ class Game {
       // Update time-of-day in menu too
       this.updateTimeOfDay(dt);
     }
+    // Update cutscenes in all states
+    if (this.cutscenes) this.cutscenes.update(dt);
     // The lighthouse beam sweeps the bay in every state.
     if (this.world.lighthouseBeam) this.world.lighthouseBeam.rotation.y += dt * 0.5;
     if (this.warmupFrames > 0) this.warmupFrames--;

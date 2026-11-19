@@ -197,9 +197,14 @@ export class MissionManager {
     this.caughtTimer = 0;
     this.kills = 0;
     this.raceLap = 1;
-    this.beginStep();
-    this.game.audio.jingle();
-    this.game.notify('Mission ' + (index + 1) + ': ' + this.meta.name + ' - ' + this.meta.brief);
+
+    // Play mission intro cutscene
+    const meta = MISSION_META[index];
+    this.game.cutscenes.playMissionIntro(meta.name, meta.brief, () => {
+      this.beginStep();
+      this.game.audio.jingle();
+      this.game.notify('Mission ' + (index + 1) + ': ' + meta.name + ' - ' + meta.brief);
+    });
     return true;
   }
 
@@ -218,6 +223,10 @@ export class MissionManager {
     // Race start step: load race map, spawn cars, enter race mode
     if (step.type === 'race_start') {
       this.loadRaceTrack(step.track);
+      // Play race countdown (3-2-1-GO) then enter race mode
+      this.game.cutscenes.playRaceStart(() => {
+        this.enterRaceMode(step.track, 'race_circuit');
+      });
       return; // race mode handles the rest
     }
 
@@ -439,26 +448,33 @@ export class MissionManager {
 
   complete() {
     this.clearMarker();
-    this.state = this.active + 1 >= MISSIONS.length ? 'idle' : 'done';
-    this.doneName = this.meta.name;
     const reward = this.meta.reward;
-    this.game.save.cash += reward;
-    this.game.save.missionIndex = Math.max(this.game.save.missionIndex, this.active + 1);
-    this.game.save.stats.missionsDone++;
-    this.game.writeSave();
-    this.game.audio.jingle();
-    this.game.notify('Mission complete! +' + '$' + reward.toLocaleString('en-US'));
-    if (this.game.hud) {
-      this.game.hud.showMissionSplash({
-        kind: 'complete', title: 'MISSION COMPLETE', name: this.doneName,
-        lines: ['Reward $' + reward.toLocaleString('en-US'), 'Missions done ' + this.game.save.stats.missionsDone, 'Cash $' + this.game.save.cash.toLocaleString('en-US')],
-      });
-    }
-    this.game.setWanted(0);
-    this.cleanupEntities();
-    this.active = -1;
-    this.stepIndex = 0;
-    this.raceMode = false;
+    const name = this.meta.name;
+    const missionsDone = this.game.save.stats.missionsDone + 1;
+    const cash = this.game.save.cash + reward;
+
+    // Play mission outro cutscene
+    this.game.cutscenes.playMissionOutro(name, reward, () => {
+      this.state = this.active + 1 >= MISSIONS.length ? 'idle' : 'done';
+      this.doneName = name;
+      this.game.save.cash += reward;
+      this.game.save.missionIndex = Math.max(this.game.save.missionIndex, this.active + 1);
+      this.game.save.stats.missionsDone++;
+      this.game.writeSave();
+      this.game.audio.jingle();
+      this.game.notify('Mission complete! +' + '$' + reward.toLocaleString('en-US'));
+      if (this.game.hud) {
+        this.game.hud.showMissionSplash({
+          kind: 'complete', title: 'MISSION COMPLETE', name,
+          lines: ['Reward $' + reward.toLocaleString('en-US'), 'Missions done ' + missionsDone, 'Cash $' + cash.toLocaleString('en-US')],
+        });
+      }
+      this.game.setWanted(0);
+      this.cleanupEntities();
+      this.active = -1;
+      this.stepIndex = 0;
+      this.raceMode = false;
+    });
   }
 
   fail(reason) {
