@@ -350,13 +350,25 @@ export class MissionManager {
 
   saveCityState() {
     const g = this.game;
+    const p = g.player;
+
+    // If player is in a car, save car info
+    let carInfo = null;
+    if (p.inCar) {
+      carInfo = {
+        defKey: p.inCar.defKey,
+        health: p.inCar.health,
+        color: p.inCar.mesh.userData.body?.material?.color?.getHex() || 0xc94f43,
+      };
+    }
+
     return {
       player: {
-        pos: { x: g.player.pos.x, z: g.player.pos.z },
-        heading: g.player.heading,
-        health: g.player.health,
-        armor: g.player.armor,
-        inCar: g.player.inCar ? g.player.inCar.defKey : null,
+        pos: { x: p.pos.x, z: p.pos.z },
+        heading: p.heading,
+        health: p.health,
+        armor: p.armor,
+        inCar: carInfo,
         currentWeapon: g.save.currentWeapon,
       },
       traffic: g.traffic.cars.map(c => ({
@@ -371,7 +383,7 @@ export class MissionManager {
         wantedLevel: g.wanted,
         roadblocks: g.police.blockers || [],
       },
-      peds: g.peds.peds.map(p => ({ pos: { x: p.pos.x, z: p.pos.z }, state: p.state })),
+      peds: g.peds.peds.map(ped => ({ pos: { x: ped.pos.x, z: ped.pos.z }, state: ped.state })),
       timeOfDay: g.tod,
       wanted: g.wanted,
       activeMission: this.active,
@@ -383,16 +395,19 @@ export class MissionManager {
     const s = this.savedCityState;
     const g = this.game;
 
-    // Restore player
+    // Restore player position and stats
     g.player.pos.set(s.player.pos.x, 0, s.player.pos.z);
     g.player.heading = s.player.heading;
     g.player.health = s.player.health;
     g.player.armor = s.player.armor;
+
+    // Restore player's car if they had one
     if (s.player.inCar) {
-      // Re-spawn player's car
-      const car = g.spawnCar(s.player.inCar, 0xc94f43, s.player.pos.x, s.player.pos.z, s.player.heading);
+      const car = g.spawnCar(s.player.inCar.defKey, s.player.inCar.color, s.player.pos.x, s.player.pos.z, s.player.heading);
+      car.health = s.player.inCar.health;
       g.player.enterCar(car);
     }
+
     g.save.currentWeapon = s.player.currentWeapon;
 
     // Restore time of day

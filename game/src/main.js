@@ -1059,6 +1059,7 @@ class Game {
       nearCar: this.nearCar,
       nearPickup: this.nearPickup,
       nearMission: this.nearMission,
+      cutsceneActive: this.cutscenes?.active || false,
     });
     if (this.elapsed % 30 < dt) this.writeSave();
   }
@@ -1202,9 +1203,8 @@ class Game {
     // Re-add sun/hemi to city scene
     this.cityScene.add(this.sun, this.sun.target, this.hemiLight);
 
-    // Respawn traffic
-    this.traffic.spawn(18, { x: 0, z: 0 }, 300);
-    this.police.spawn(4, { x: 0, z: 0 }, 300);
+    // Traffic and police will respawn naturally via their managers
+    // (based on player position and density settings)
 
     this.notify('Returned to city');
   }

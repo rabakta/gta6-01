@@ -316,6 +316,20 @@ export class HUD {
   // Replaces the single-line prompt with a stack of contextual hints
   updateContextPrompts(state) {
     if (!this.contextPromptsEl) return;
+    // Hide during cutscenes
+    if (state.cutsceneActive) {
+      // Hide all existing rows
+      for (const [key, el] of this.contextPromptRows) {
+        el.classList.remove('visible');
+        setTimeout(() => {
+          if (this.contextPromptRows.has(key)) {
+            el.remove();
+            this.contextPromptRows.delete(key);
+          }
+        }, 250);
+      }
+      return;
+    }
     const inCar = !!state.inCar;
     const nearShop = state.nearShop;
     const nearCar = state.nearCar;
