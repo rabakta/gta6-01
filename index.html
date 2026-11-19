@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="BRISA BAY — an open-world crime game. Drive, steal cars, run 12 story missions, run taxi fares, collect 20 packages, dodge the BCPD.">
+<title>BRISA BAY — open-world crime</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c121a; font-family: Arial, Helvetica, sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .panel { position: fixed; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 5; }
+
+  /* Top-right: money, heat, clock. */
+  #hud-top-right { top: 14px; right: 16px; text-align: right; }
+  #cash { font-size: 30px; font-weight: 900; color: #7ee2a8; letter-spacing: 1px; }
+  #stars { font-size: 26px; letter-spacing: 4px; margin-top: 2px; }
+  #clock { font-size: 15px; opacity: 0.85; margin-top: 2px; }
+
+  /* Top-centre: current objective. */
+  #objective { top: 14px; left: 50%; transform: translateX(-50%); max-width: 560px; text-align: center;
+    background: rgba(10,16,24,0.62); padding: 8px 16px; border-radius: 8px; font-size: 15px; line-height: 1.35; }
+
+  /* Toasts, just under the objective. */
+  #toast { top: 76px; left: 50%; transform: translateX(-50%); font-size: 17px; background: rgba(10,16,24,0.7);
+    padding: 7px 16px; border-radius: 8px; opacity: 0; transition: opacity 0.4s; white-space: nowrap; }
+
+  /* Bottom-left: round minimap. Bottom-right: vitals. */
+  #minimap-wrap { left: 14px; bottom: 14px; }
+  #minimap { width: 220px; height: 220px; border: 2px solid rgba(255,255,255,0.55); border-radius: 50%;
+    background: rgba(12,18,26,0.8); box-shadow: 0 2px 14px rgba(0,0,0,0.6); }
+  #hud-bottom-right { right: 16px; bottom: 16px; text-align: right; }
+  #health-bar { width: 220px; height: 14px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.5); border-radius: 4px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #37c978, #7ee2a8); }
+  #health-num { font-size: 14px; margin-top: 3px; }
+  #armor { font-size: 13px; color: #9fc4d8; }
+  /* Fitted garage mods, one short line under the vitals. */
+  #mods { font-size: 13px; color: #ffd34d; margin-top: 2px; }
+  #weapon-line { font-size: 16px; margin-top: 8px; }
+  #speed { font-size: 26px; font-weight: 900; margin-top: 2px; }
+  #radio { font-size: 14px; color: #ffd98a; margin-top: 2px; }
+
+  /* Bottom-centre: one-line controls reminder. */
+  #hint { left: 50%; bottom: 12px; transform: translateX(-50%); font-size: 12px; opacity: 0.75;
+    background: rgba(10,16,24,0.5); padding: 5px 12px; border-radius: 6px; white-space: nowrap; }
+
+  /* Full-screen damage flash. */
+  #damage { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(200,20,20,0.55) 100%); }
+
+  /* Menus. */
+  #menu { position: fixed; inset: 0; z-index: 10; display: none; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(10,14,22,0.55), rgba(10,14,22,0.82)); }
+  #menu-card { max-width: 640px; text-align: center; color: #fff; padding: 30px 40px; }
+  #menu-title { font-size: 64px; font-weight: 900; letter-spacing: 6px; margin: 0; color: #ffd34d;
+    text-shadow: 0 3px 0 #b3541e, 0 8px 24px rgba(0,0,0,0.8); }
+  #menu-body { font-size: 16px; line-height: 1.55; text-shadow: 0 1px 4px rgba(0,0,0,0.9); }
+  #menu-body .story { color: #ffe9c9; font-style: italic; }
+  #menu-body .controls { color: #bcd6ea; font-size: 14px; }
+  #menu-body .next { color: #7ee2a8; }
+  #menu-body .save-line { color: #ffd98a; }
+  #menu-hint { margin-top: 18px; font-size: 15px; color: #fff; opacity: 0.9; }
+
+  /* Shop panel. */
+  #shop { position: fixed; right: 16px; top: 110px; z-index: 10; display: none; width: 300px;
+    background: rgba(10,16,24,0.88); border: 1px solid rgba(255,255,255,0.35); border-radius: 10px; padding: 14px; color: #fff; }
+  #shop-title { font-size: 18px; font-weight: 800; margin-bottom: 10px; color: #ffd34d; }
+  #shop-items button { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 9px 10px;
+    background: #1d2733; color: #fff; border: 1px solid #4a6fa5; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  #shop-items button:hover { background: #2b3a55; }
+  #shop-items button:disabled { opacity: 0.45; cursor: default; }
+  #shop-items button span { display: block; font-size: 12px; color: #bcd6ea; margin-top: 2px; }
+  #shop-close { margin-top: 8px; width: 100%; padding: 8px; background: #3a3a3a; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+
+  /* Visually hidden live region for screen readers. */
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* On narrow windows the hint bar would collide with the minimap. */
+  @media (max-width: 900px) { #hint { display: none; } }
+</style>
+</head>
+<body>
+<!-- BRISA BAY — HUD and menus; the game itself boots from src/main.js. -->
+<noscript><p style="color:#fff;text-align:center;padding:40px">BRISA BAY needs JavaScript to run.</p></noscript>
+<canvas id="game" aria-label="Brisa Bay: an open-world crime game. Drive, steal cars, run missions, run taxi fares, collect packages, dodge the police."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+<div id="damage"></div>
+
+<div class="panel" id="hud-top-right">
+  <div id="cash">$250</div>
+  <div id="stars">☆☆☆☆☆</div>
+  <div id="clock">18:24</div>
+</div>
+<div class="panel" id="objective">BRISA BAY</div>
+<div class="panel" id="toast"></div>
+<div class="panel" id="minimap-wrap"><canvas id="minimap" width="220" height="220"></canvas></div>
+<div class="panel" id="hud-bottom-right">
+  <div id="health-bar"><div id="health-fill"></div></div>
+  <div id="health-num">100</div>
+  <div id="armor"></div>
+  <div id="mods"></div>
+  <div id="weapon-line"><span id="weapon">Fists</span> · <span id="ammo">∞</span></div>
+  <div id="weapons"></div>
+  <div id="speed">0 km/h</div>
+  <div id="radio">♪ SOL 98.5</div>
+</div>
+<div class="panel" id="hint">WASD drive / walk · E enter car / shop / taxi pickup · F punch · CLICK shoot · 0-3 weapons · Pistol by safehouse · M mission · R radio · H horn</div>
+<div id="menu">
+  <div id="menu-card">
+    <h1 id="menu-title">BRISA BAY</h1>
+    <div id="menu-body"></div>
+    <p id="menu-hint"></p>
+  </div>
+</div>
+<div id="shop">
+  <div id="shop-title"></div>
+  <div id="shop-items"></div>
+  <button id="shop-close">Close (E)</button>
+</div>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
