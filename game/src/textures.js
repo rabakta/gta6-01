@@ -1,143 +1,281 @@
-// BRISA BAY — procedural textures: every surface is painted on a canvas
-// at load, so the game ships no image files. Seeded canvases keep the
-// city identical every run. Facades are painted per storey with a second
-// emissive canvas, so lit windows glow at sunset instead of yellow paint.
+// BRISA BAY — procedural textures HD: every surface painted on canvas at load.
+// Zero external assets. Seeded canvases = deterministic city.
+// HD UPGRADE: 512×512 albedo, 256×256 normals, height maps, detail normals, AO, clearcoat normals.
 import * as THREE from 'three';
 import { makeCanvas, mulberry32, pick } from './utils.js';
 
-// PBR texture caches
-const roughnessCache = new Map();
-const metalnessCache = new Map();
-const normalCache = new Map();
+// ─── HD CONFIG ──────────────────────────────────────────────
+const HD = {
+  ALBEDO: 512,      // color/emissive
+  NORMAL: 256,      // macro normal
+  DETAIL: 512,      // detail normal (high-freq)
+  HEIGHT: 256,      // height/displacement
+  ROUGHNESS: 512,   // roughness
+  METALNESS: 512,   // metalness
+  AO: 256,          // ambient occlusion
+  CLEARCOAT: 512,   // car clearcoat normal
+  ANISO: 16,        // max anisotropy
+};
 
-// Wrap a painted canvas as a repeatable, colour-correct texture.
-function paintTexture(canvas, repeatX = 1, repeatY = 1) {
+// ─── CACHES ─────────────────────────────────────────────────
+const caches = {
+  albedo: new Map(),
+  emissive: new Map(),
+  roughness: new Map(),
+  metalness: new Map(),
+  normal: new Map(),
+  detailNormal: new Map(),
+  height: new Map(),
+  ao: new Map(),
+  clearcoatNormal: new Map(),
+};
+
+// ─── TEXTURE WRAPPERS ───────────────────────────────────────
+function makeTex(canvas, colorSpace, repeat = [1, 1]) {
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeatX, repeatY);
-  tex.anisotropy = 4;
-  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.repeat.set(...repeat);
+  tex.anisotropy = HD.ANISO;
+  tex.colorSpace = colorSpace;
+  tex.needsUpdate = true;
   return tex;
 }
+const srgbTex = (c, r) => makeTex(c, THREE.SRGBColorSpace, r);
+const linTex = (c, r) => makeTex(c, THREE.LinearSRGBColorSpace, r);
 
-// Create a linear texture (for roughness/metalness - grayscale)
-function paintLinearTexture(canvas, repeatX = 1, repeatY = 1) {
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeatX, repeatY);
-  tex.anisotropy = 4;
-  tex.colorSpace = THREE.LinearSRGBColorSpace; // Linear for PBR data
-  return tex;
+// ─── NOISE HELPERS ──────────────────────────────────────────
+function simplex2D(x, y, rng) {
+  const n = (a, b) => Math.sin(a * 12.9898 + b * 78.233 + rng() * 43758.5453) * 43758.5453;
+  return (n(x, y) + n(x * 2, y * 2) * 0.5 + n(x * 4, y * 4) * 0.25) / 1.75;
 }
 
-// Generate roughness map from base texture logic
-function generateRoughnessMap(baseRoughness, variation, seed, w = 256, h = 256) {
+function perlin2D(x, y, rng) {
+  const hash = (ix, iy) => mulberry32((ix * 1315423911) ^ (iy * 2654435761) ^ Math.floor(rng() * 1e9))();
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  return lerp(
+    lerp(hash(ix, iy), hash(ix + 1, iy), u),
+    lerp(hash(ix, iy + 1), hash(ix + 1, iy + 1), u),
+    v
+  );
+}
+
+function fbm(x, y, octaves, rng, scale = 1) {
+  let v = 0, a = 1, f = scale;
+  for (let i = 0; i < octaves; i++) {
+    v += a * simplex2D(x * f, y * f, rng);
+    a *= 0.5;
+    f *= 2;
+  }
+  return v;
+}
+
+// ─── ROUGHNESS / METALNESS ──────────────────────────────────
+function generateRoughnessMap(baseRoughness, variation, seed, w = HD.ROUGHNESS, h = HD.ROUGHNESS) {
   const key = `rough_${baseRoughness}_${variation}_${seed}_${w}_${h}`;
-  let tex = roughnessCache.get(key);
+  let tex = caches.roughness.get(key);
   if (tex) return tex;
-  
   const c = makeCanvas(w, h);
   const g = c.getContext('2d');
   const rng = mulberry32(seed);
-  
-  // Base roughness
-  const baseVal = Math.round(baseRoughness * 255);
-  g.fillStyle = `rgb(${baseVal}, ${baseVal}, ${baseVal})`;
-  g.fillRect(0, 0, w, h);
-  
-  // Add variation noise
-  for (let i = 0; i < w * h * 0.1; i++) {
-    const x = rng() * w;
-    const y = rng() * h;
-    const v = Math.round((baseRoughness + (rng() - 0.5) * variation) * 255);
-    const clamped = Math.max(0, Math.min(255, v));
-    g.fillStyle = `rgb(${clamped}, ${clamped}, ${clamped})`;
-    g.fillRect(x, y, 2 + rng() * 4, 2 + rng() * 4);
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  for (let i = 0; i < w * h; i++) {
+    const x = i % w, y = Math.floor(i / w);
+    const noise = simplex2D(x * 0.02, y * 0.02, rng);
+    const v = Math.max(0, Math.min(1, baseRoughness + (noise - 0.5) * variation));
+    const val = Math.round(v * 255);
+    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = val;
+    d[i * 4 + 3] = 255;
   }
-  
-  tex = paintLinearTexture(c);
-  roughnessCache.set(key, tex);
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.roughness.set(key, tex);
   return tex;
 }
 
-// Generate metalness map (mostly 0 for non-metals, 1 for metals)
-function generateMetalnessMap(isMetal, seed, w = 256, h = 256) {
+function generateMetalnessMap(isMetal, seed, w = HD.METALNESS, h = HD.METALNESS) {
   const key = `metal_${isMetal}_${seed}_${w}_${h}`;
-  let tex = metalnessCache.get(key);
+  let tex = caches.metalness.get(key);
   if (tex) return tex;
-  
   const c = makeCanvas(w, h);
   const g = c.getContext('2d');
-  const val = isMetal ? 255 : 0;
-  g.fillStyle = `rgb(${val}, ${val}, ${val})`;
-  g.fillRect(0, 0, w, h);
-  
-  // Add some edge wear for metals
-  if (isMetal) {
-    const rng = mulberry32(seed + 1000);
-    for (let i = 0; i < 200; i++) {
-      const x = rng() * w;
-      const y = rng() * h;
-      g.fillStyle = 'rgb(180, 180, 180)';
-      g.fillRect(x, y, 1, 1);
+  const rng = mulberry32(seed);
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  const base = isMetal ? 1 : 0;
+  for (let i = 0; i < w * h; i++) {
+    const x = i % w, y = Math.floor(i / w);
+    let v = base;
+    if (isMetal) {
+      const edge = Math.min(x / 10, (w - x) / 10, y / 10, (h - y) / 10);
+      const scratch = simplex2D(x * 0.05, y * 0.01, rng) > 0.98 ? 0.3 : 0;
+      v = Math.max(0, base - edge * 0.2 - scratch);
     }
+    const val = Math.round(v * 255);
+    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = val;
+    d[i * 4 + 3] = 255;
   }
-  
-  tex = paintLinearTexture(c);
-  metalnessCache.set(key, tex);
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.metalness.set(key, tex);
   return tex;
 }
 
-// Generate normal map from height data (optimized with caching and lower resolution)
-function generateNormalMap(heightFn, seed, w = 128, h = 128, strength = 1.0) {
+// ─── NORMAL MAPS (macro + detail) ───────────────────────────
+function generateNormalMap(heightFn, seed, w = HD.NORMAL, h = HD.NORMAL, strength = 1.0) {
   const key = `normal_${seed}_${w}_${h}_${strength}`;
-  let tex = normalCache.get(key);
+  let tex = caches.normal.get(key);
   if (tex) return tex;
-  
   const c = makeCanvas(w, h);
   const g = c.getContext('2d');
-  const imgData = g.createImageData(w, h);
-  const data = imgData.data;
-  const rng = mulberry32(seed);
-  
-  // Sample height field at lower resolution for performance
+  const img = g.createImageData(w, h);
+  const d = img.data;
   const heights = new Float32Array(w * h);
+  const rng = mulberry32(seed);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      heights[y * w + x] = heightFn(x * (256/w), y * (256/h), rng);
+      heights[y * w + x] = heightFn(x, y, rng);
     }
   }
-  
-  // Compute normals via Sobel
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const hL = heights[y * w + Math.max(0, x - 1)];
       const hR = heights[y * w + Math.min(w - 1, x + 1)];
       const hU = heights[Math.max(0, y - 1) * w + x];
       const hD = heights[Math.min(h - 1, y + 1) * w + x];
-      
       const nx = (hL - hR) * strength;
       const ny = (hU - hD) * strength;
       const nz = 1.0;
       const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-      
-      const idx = (y * w + x) * 4;
-      data[idx] = Math.round((nx / len * 0.5 + 0.5) * 255);     // R = X
-      data[idx + 1] = Math.round((ny / len * 0.5 + 0.5) * 255); // G = Y
-      data[idx + 2] = Math.round((nz / len * 0.5 + 0.5) * 255); // B = Z
-      data[idx + 3] = 255;
+      const i = (y * w + x) * 4;
+      d[i] = Math.round((nx / len * 0.5 + 0.5) * 255);
+      d[i + 1] = Math.round((ny / len * 0.5 + 0.5) * 255);
+      d[i + 2] = Math.round((nz / len * 0.5 + 0.5) * 255);
+      d[i + 3] = 255;
     }
   }
-  
-  g.putImageData(imgData, 0, 0);
-  tex = paintLinearTexture(c);
-  normalCache.set(key, tex);
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.normal.set(key, tex);
   return tex;
 }
 
-// Sprinkle sun-bleach / grime specks over a filled canvas.
+// High-frequency detail normal (for close-up micro detail)
+function generateDetailNormal(seed, w = HD.DETAIL, h = HD.DETAIL, strength = 0.3) {
+  const key = `detailN_${seed}_${w}_${h}_${strength}`;
+  let tex = caches.detailNormal.get(key);
+  if (tex) return tex;
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  const rng = mulberry32(seed);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const n1 = simplex2D(x * 0.1, y * 0.1, rng);
+      const n2 = simplex2D(x * 0.2, y * 0.05, rng);
+      const nx = (n1 - 0.5) * strength;
+      const ny = (n2 - 0.5) * strength;
+      const nz = 1.0;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const i = (y * w + x) * 4;
+      d[i] = Math.round((nx / len * 0.5 + 0.5) * 255);
+      d[i + 1] = Math.round((ny / len * 0.5 + 0.5) * 255);
+      d[i + 2] = Math.round((nz / len * 0.5 + 0.5) * 255);
+      d[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.detailNormal.set(key, tex);
+  return tex;
+}
+
+// ─── HEIGHT / DISPLACEMENT ──────────────────────────────────
+function generateHeightMap(heightFn, seed, w = HD.HEIGHT, h = HD.HEIGHT) {
+  const key = `height_${seed}_${w}_${h}`;
+  let tex = caches.height.get(key);
+  if (tex) return tex;
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  const rng = mulberry32(seed);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const h = heightFn(x, y, rng);
+      const val = Math.round(Math.max(0, Math.min(1, h)) * 255);
+      const i = (y * w + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = val;
+      d[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.height.set(key, tex);
+  return tex;
+}
+
+// ─── AMBIENT OCCLUSION ──────────────────────────────────────
+function generateAOMap(occlusionFn, seed, w = HD.AO, h = HD.AO) {
+  const key = `ao_${seed}_${w}_${h}`;
+  let tex = caches.ao.get(key);
+  if (tex) return tex;
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  const rng = mulberry32(seed);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const ao = occlusionFn(x, y, rng);
+      const val = Math.round(Math.max(0, Math.min(1, ao)) * 255);
+      const i = (y * w + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = val;
+      d[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.ao.set(key, tex);
+  return tex;
+}
+
+// ─── CLEARCOAT NORMAL (car paint orange peel) ───────────────
+function generateClearcoatNormal(seed, w = HD.CLEARCOAT, h = HD.CLEARCOAT) {
+  const key = `ccNormal_${seed}_${w}_${h}`;
+  let tex = caches.clearcoatNormal.get(key);
+  if (tex) return tex;
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  const rng = mulberry32(seed);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const n = simplex2D(x * 0.04, y * 0.04, rng);
+      const nx = (n - 0.5) * 0.08;
+      const ny = (simplex2D(x * 0.04 + 100, y * 0.04, rng) - 0.5) * 0.08;
+      const nz = 1.0;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const i = (y * w + x) * 4;
+      d[i] = Math.round((nx / len * 0.5 + 0.5) * 255);
+      d[i + 1] = Math.round((ny / len * 0.5 + 0.5) * 255);
+      d[i + 2] = Math.round((nz / len * 0.5 + 0.5) * 255);
+      d[i + 3] = 255;
+    }
+  }
+  g.putImageData(img, 0, 0);
+  tex = linTex(c);
+  caches.clearcoatNormal.set(key, tex);
+  return tex;
+}
+
+// ─── SPECKLE ────────────────────────────────────────────────
 function speckle(g, rng, w, h, count, light, dark) {
   for (let i = 0; i < count; i++) {
     g.fillStyle = rng() < 0.5 ? light : dark;
@@ -145,341 +283,486 @@ function speckle(g, rng, w, h, count, light, dark) {
   }
 }
 
-// A building face: warm stucco, rows of lit and dark windows, a cornice
-// and a coloured awning stripe at street level. `floors` is the storey
-// count (window rows above the ground floor), `cols` the window count
-// across — the caller matches both to the building's size, so a tall
-// tower gets more rows instead of taller windows. Returns the colour map
-// and an emissive map (black except the lit windows), painted from the
-// same seeded stream so the glow lands on exactly the windows that are lit.
-// Also returns roughness, metalness, and normal maps for PBR.
+// ─── FACADE TEXTURE (HD) ────────────────────────────────────
 export function facadeTexture(base, seed, floors = 6, cols = 4) {
   const rows = Math.max(1, floors - 1);
   const rng = mulberry32(seed);
-  const c = makeCanvas(256, 256);
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
   const g = c.getContext('2d');
-  const e = makeCanvas(256, 256);
+  const e = makeCanvas(W, H);
   const eg = e.getContext('2d');
+
+  // Albedo
   g.fillStyle = base;
-  g.fillRect(0, 0, 256, 256);
+  g.fillRect(0, 0, W, H);
   eg.fillStyle = '#000000';
-  eg.fillRect(0, 0, 256, 256);
-  speckle(g, rng, 256, 256, 900, 'rgba(255,255,255,0.05)', 'rgba(0,0,0,0.06)');
-  // Faint floor lines across the window zone: the facade keeps its rhythm
-  // even where a storey has no window.
-  g.fillStyle = 'rgba(0,0,0,0.10)';
-  for (let y = 40; y < 200; y += 26) g.fillRect(0, y, 256, 2);
-  // Window grid: cols across, rows of storeys above the ground floor.
-  const colW = 256 / cols;
+  eg.fillRect(0, 0, W, H);
+
+  // Subtle grime variation
+  speckle(g, rng, W, H, 3000, 'rgba(255,255,255,0.03)', 'rgba(0,0,0,0.04)');
+
+  // Floor lines
+  g.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let y = 60; y < H - 40; y += 40) g.fillRect(0, y, W, 2);
+
+  // Window grid
+  const colW = W / cols;
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const x = Math.round(col * colW + colW * 0.16);
-      const y = 14 + row * 26;
+      const y = 20 + row * 40;
       const w = Math.round(colW * 0.68);
-      const h = 20;
+      const h = 32;
       const lit = rng() < 0.4;
-      // Recess: dark frame, then glass, then a sun glint and a sill.
       g.fillStyle = '#1a1e24';
-      g.fillRect(x - 2, y - 2, w + 4, h + 4);
+      g.fillRect(x - 3, y - 3, w + 6, h + 6);
       g.fillStyle = lit ? pick(rng, ['#ffd98a', '#ffb45e', '#ffe9b8']) : pick(rng, ['#3d5a73', '#2b3542', '#4a6b52']);
       g.fillRect(x, y, w, h);
-      g.fillStyle = 'rgba(255,255,255,0.25)';
-      g.fillRect(x, y, w, 3);
-      g.fillStyle = 'rgba(255,255,255,0.35)';
-      g.fillRect(x - 2, y + h + 2, w + 4, 2);
+      g.fillStyle = 'rgba(255,255,255,0.2)';
+      g.fillRect(x, y, w, 4);
+      g.fillStyle = 'rgba(255,255,255,0.3)';
+      g.fillRect(x - 3, y + h + 3, w + 6, 3);
       if (lit) {
         eg.fillStyle = '#ffca7a';
         eg.fillRect(x, y, w, h);
       }
-      // Painted balcony on some windows: a slab, two rails, soft shadow.
       if (rng() < 0.35) {
-        g.fillStyle = 'rgba(0,0,0,0.28)';
-        g.fillRect(x - 4, y + h + 6, w + 8, 4);
-        g.fillStyle = 'rgba(255,255,255,0.28)';
-        g.fillRect(x - 4, y + h + 4, w + 8, 3);
-        g.fillStyle = 'rgba(20,22,28,0.85)';
-        g.fillRect(x - 2, y + h + 7, 2, 10);
-        g.fillRect(x + w, y + h + 7, 2, 10);
+        g.fillStyle = 'rgba(0,0,0,0.25)';
+        g.fillRect(x - 5, y + h + 9, w + 10, 5);
+        g.fillStyle = 'rgba(255,255,255,0.2)';
+        g.fillRect(x - 5, y + h + 6, w + 10, 4);
+        g.fillStyle = 'rgba(20,22,28,0.8)';
       }
     }
   }
-  // Cornice shadow, awning stripe, and a ground-floor door.
-  g.fillStyle = 'rgba(0,0,0,0.25)';
-  g.fillRect(0, 0, 256, 8);
-  g.fillStyle = pick(rng, ['#c94f43', '#2e7d6b', '#d9a441', '#4a6fa5']);
-  g.fillRect(0, 226, 256, 30);
-  g.fillStyle = '#1d2733';
-  g.fillRect(108, 196, 40, 60);
-  g.fillStyle = 'rgba(255,217,138,0.85)';
-  g.fillRect(112, 200, 32, 26);
 
-  // PBR maps
-  const roughnessMap = generateRoughnessMap(0.85, 0.15, seed + 1);
-  const metalnessMap = generateMetalnessMap(false, seed + 2);
-  const normalMap = generateNormalMap((x, y, r) => {
-    // Stucco bumpiness
+  // ─── Height map (window recesses, cornices, balcony slabs) ───
+  const heightFn = (x, y, r) => {
     let h = 0;
-    h += Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.3;
-    h += (r() - 0.5) * 0.1;
     // Window recesses
-    const colW = 256 / cols;
-    const rows = Math.max(1, floors - 1);
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const wx = Math.round(col * colW + colW * 0.16);
-        const wy = 14 + row * 26;
-        const ww = Math.round(colW * 0.68);
-        const hh = 20;
-        if (x > wx - 4 && x < wx + ww + 4 && y > wy - 4 && y < wy + hh + 4) {
-          h -= 0.2; // Recessed
-        }
-      }
+    const colW2 = W / cols;
+    const cIdx = Math.floor((x % colW2) / colW2 * cols);
+    const rIdx = Math.floor(y / 40);
+    if (rIdx < rows && cIdx < cols) {
+      const wx = Math.round(cIdx * colW2 + colW2 * 0.16);
+      const wy = 20 + rIdx * 40;
+      const ww = Math.round(colW2 * 0.68);
+      const wh = 32;
+      if (x >= wx - 3 && x <= wx + ww + 3 && y >= wy - 3 && y <= wy + wh + 3) h = 0.02;
+      if (x >= wx && x <= wx + ww && y >= wy && y <= wy + wh) h = -0.04;
+    }
+    // Cornice lines
+    for (let ry = 60; ry < H - 40; ry += 40) {
+      if (Math.abs(y - ry) < 2) h = Math.max(h, 0.015);
+    }
+    return Math.max(-0.1, Math.min(0.1, h));
+  };
+
+  // ─── AO map (window frames, corners) ───
+  const aoFn = (x, y, r) => {
+    let ao = 1;
+    // Window frame occlusion
+    const colW2 = W / cols;
+    const cIdx = Math.floor((x % colW2) / colW2 * cols);
+    const rIdx = Math.floor(y / 40);
+    if (rIdx < rows && cIdx < cols) {
+      const wx = Math.round(cIdx * colW2 + colW2 * 0.16);
+      const wy = 20 + rIdx * 40;
+      const ww = Math.round(colW2 * 0.68);
+      const wh = 32;
+      const dx = Math.max(wx - 3 - x, 0, x - (wx + ww + 3));
+      const dy = Math.max(wy - 3 - y, 0, y - (wy + wh + 3));
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 8) ao = Math.min(ao, 0.4 + 0.6 * (d / 8));
+    }
+    return ao;
+  };
+
+  // ─── Generate all maps ───
+  const albedo = srgbTex(c);
+  const emissive = srgbTex(e);
+  const roughness = generateRoughnessMap(0.85, 0.15, seed + 1);
+  const metalness = generateMetalnessMap(false, seed + 2);
+  const normal = generateNormalMap(heightFn, seed + 3);
+  const detailNormal = generateDetailNormal(seed + 4);
+  const height = generateHeightMap(heightFn, seed + 5);
+  const ao = generateAOMap(aoFn, seed + 6);
+  const clearcoatNormal = generateClearcoatNormal(seed + 7);
+
+  // Cache albedo/emissive
+  caches.albedo.set(`facade_${base}_${seed}_${floors}_${cols}`, albedo);
+  caches.emissive.set(`facade_${base}_${seed}_${floors}_${cols}`, emissive);
+
+  return {
+    map: albedo,
+    emissiveMap: emissive,
+    roughnessMap: roughness,
+    metalnessMap: metalness,
+    normalMap: normal,
+    detailNormalMap: detailNormal,
+    displacementMap: height,
+    displacementScale: 0.05,
+    aoMap: ao,
+    clearcoatNormalMap: clearcoatNormal,
+  };
+}
+
+// ─── ROAD TEXTURE (HD) ──────────────────────────────────────
+export function roadTexture() {
+  const seed = 20261120;
+  const rng = mulberry32(seed);
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+
+  g.fillStyle = '#2a2d33';
+  g.fillRect(0, 0, W, H);
+
+  // Asphalt aggregate
+  for (let i = 0; i < 15000; i++) {
+    const x = rng() * W, y = rng() * H;
+    const v = 35 + rng() * 15;
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(x, y, 1 + rng() * 2, 1 + rng() * 2);
+  }
+  // Tire wear strips
+  g.fillStyle = 'rgba(15,15,15,0.4)';
+  for (let y = H * 0.3; y < H * 0.7; y += 40) g.fillRect(0, y, W, 2);
+
+  const heightFn = (x, y) => {
+    let h = 0;
+    // Aggregate bumps
+    h += fbm(x * 0.05, y * 0.05, 3, mulberry32(x * 1000 + y)) * 0.008;
+    // Tire grooves
+    for (let gy = H * 0.3; gy < H * 0.7; gy += 40) {
+      if (Math.abs(y - gy) < 1) h = -0.01;
     }
     return h;
-  }, seed + 3, 128, 128, 0.5);
+  };
 
-  return { 
-    map: paintTexture(c), 
-    emissiveMap: paintTexture(e),
-    roughnessMap,
-    metalnessMap,
-    normalMap
+  const aoFn = (x, y) => {
+    let ao = 1;
+    for (let gy = H * 0.3; gy < H * 0.7; gy += 40) {
+      if (Math.abs(y - gy) < 2) ao = Math.min(ao, 0.6);
+    }
+    return ao;
+  };
+
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.95, 0.05, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 0.8),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.4),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.02,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
   };
 }
 
-// Asphalt with a dashed centre line and worn white edges.
-export function roadTexture() {
-  const c = makeCanvas(128, 128);
-  const g = c.getContext('2d');
-  g.fillStyle = '#2b2e33';
-  g.fillRect(0, 0, 128, 128);
-  speckle(g, mulberry32(7), 128, 128, 500, 'rgba(255,255,255,0.04)', 'rgba(0,0,0,0.12)');
-  g.fillStyle = '#e8d24a';
-  g.fillRect(62, 8, 4, 40);
-  g.fillRect(62, 72, 4, 40);
-  g.fillStyle = 'rgba(255,255,255,0.55)';
-  g.fillRect(6, 0, 3, 128);
-  g.fillRect(119, 0, 3, 128);
-
-  // PBR: rough asphalt, non-metal
-  const roughnessMap = generateRoughnessMap(0.9, 0.1, 7);
-  const metalnessMap = generateMetalnessMap(false, 8);
-  const normalMap = generateNormalMap((x, y, r) => {
-    let h = (r() - 0.5) * 0.15;
-    // Centre line bumps
-    if (x > 60 && x < 68) h += 0.1;
-    return h;
-  }, 9, 128, 128, 0.3);
-
-  return { 
-    map: paintTexture(c, 1, 4),
-    roughnessMap,
-    metalnessMap,
-    normalMap
-  };
-}
-
-// Pavement slabs in a 4x4 grid.
+// ─── PAVEMENT TEXTURE (HD) ──────────────────────────────────
 export function pavementTexture() {
-  const c = makeCanvas(128, 128);
+  const seed = 20261121;
+  const rng = mulberry32(seed);
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
   const g = c.getContext('2d');
-  g.fillStyle = '#8f8578';
-  g.fillRect(0, 0, 128, 128);
-  speckle(g, mulberry32(9), 128, 128, 250, 'rgba(255,255,255,0.05)', 'rgba(0,0,0,0.08)');
-  g.strokeStyle = 'rgba(0,0,0,0.25)';
-  g.lineWidth = 2;
-  for (let i = 0; i <= 4; i++) {
-    g.beginPath();
-    g.moveTo(i * 32, 0);
-    g.lineTo(i * 32, 128);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(0, i * 32);
-    g.lineTo(128, i * 32);
-    g.stroke();
-  }
 
-  // PBR: concrete slabs, slightly rough
-  const roughnessMap = generateRoughnessMap(0.75, 0.1, 10);
-  const metalnessMap = generateMetalnessMap(false, 11);
-  const normalMap = generateNormalMap((x, y, r) => {
-    let h = (r() - 0.5) * 0.05;
-    // Grout lines
-    const gx = x % 32;
-    const gy = y % 32;
-    if (gx < 2 || gx > 30 || gy < 2 || gy > 30) h -= 0.1;
+  g.fillStyle = '#bfb49e';
+  g.fillRect(0, 0, W, H);
+  speckle(g, rng, W, H, 5000, 'rgba(220,210,190,0.3)', 'rgba(160,150,130,0.3)');
+
+  // Paver grid lines
+  g.fillStyle = 'rgba(120,110,90,0.4)';
+  for (let x = 0; x < W; x += 64) g.fillRect(x, 0, 1, H);
+  for (let y = 0; y < H; y += 64) g.fillRect(0, y, W, 1);
+
+  const heightFn = (x, y) => {
+    let h = 0;
+    // Paver edges
+    if (x % 64 < 2 || (64 - x % 64) < 2 || y % 64 < 2 || (64 - y % 64) < 2) h = 0.01;
     return h;
-  }, 12, 128, 128, 0.2);
+  };
 
-  return { 
-    map: paintTexture(c, 6, 6),
-    roughnessMap,
-    metalnessMap,
-    normalMap
+  const aoFn = (x, y) => {
+    let ao = 1;
+    if (x % 64 < 3 || y % 64 < 3) ao = 0.7;
+    return ao;
+  };
+
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.88, 0.08, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 0.6),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.3),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.015,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
   };
 }
 
-// Beach sand with a few shells.
+// ─── SAND TEXTURE (HD) ──────────────────────────────────────
 export function sandTexture() {
-  const c = makeCanvas(128, 128);
+  const seed = 20261122;
+  const rng = mulberry32(seed);
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
   const g = c.getContext('2d');
+
   g.fillStyle = '#d9b380';
-  g.fillRect(0, 0, 128, 128);
-  const rng = mulberry32(21);
-  for (let i = 0; i < 700; i++) {
-    g.fillStyle = rng() < 0.5 ? 'rgba(255,240,200,0.35)' : 'rgba(120,90,50,0.25)';
-    g.fillRect(rng() * 128, rng() * 128, 2, 2);
+  g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 40000; i++) {
+    const x = rng() * W, y = rng() * H;
+    const v = 180 + rng() * 60;
+    g.fillStyle = `rgb(${v},${Math.round(v*0.85)},${Math.round(v*0.6)})`;
+    g.fillRect(x, y, 1, 1);
   }
 
-  // PBR: sand is rough, non-metal
-  const roughnessMap = generateRoughnessMap(0.95, 0.05, 22);
-  const metalnessMap = generateMetalnessMap(false, 23);
-  const normalMap = generateNormalMap((x, y, r) => {
-    // Fine sand grain
-    return (r() - 0.5) * 0.08;
-  }, 24, 128, 128, 0.15);
+  const heightFn = (x, y) => fbm(x * 0.08, y * 0.08, 4, mulberry32(x * 100 + y)) * 0.02;
+  const aoFn = () => 1;
 
-  return { 
-    map: paintTexture(c, 10, 10),
-    roughnessMap,
-    metalnessMap,
-    normalMap
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.98, 0.02, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 0.7),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.5),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.03,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
   };
 }
 
-// A shop sign / billboard with big painted letters.
-export function signTexture(text, bg, fg) {
-  const c = makeCanvas(512, 128);
+// ─── ROOF TEXTURE (HD) ──────────────────────────────────────
+export function roofTexture(hex) {
+  const seed = Math.abs(parseInt(hex.replace('#', ''), 16) + 3000);
+  const rng = mulberry32(seed);
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
   const g = c.getContext('2d');
-  g.fillStyle = bg;
-  g.fillRect(0, 0, 512, 128);
-  g.strokeStyle = fg;
-  g.lineWidth = 6;
-  g.strokeRect(6, 6, 500, 116);
-  g.fillStyle = fg;
-  g.font = 'bold 64px Arial, sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text, 256, 68);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
-}
 
-// A tall roadside billboard: sunburst background, two lines of copy.
-export function billboardTexture(line1, line2) {
-  const c = makeCanvas(512, 256);
-  const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, '#ff9a3d');
-  grad.addColorStop(1, '#d94f43');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 512, 256);
-  g.fillStyle = 'rgba(255,255,255,0.16)';
-  for (let i = 0; i < 12; i++) {
-    g.beginPath();
-    g.moveTo(256, 256);
-    g.lineTo(i * 48 - 24, 0);
-    g.lineTo(i * 48 + 24, 0);
-    g.fill();
+  const base = parseInt(hex.replace('#', ''), 16);
+  const r = (base >> 16) & 255, gC = (base >> 8) & 255, b = base & 255;
+  g.fillStyle = hex;
+  g.fillRect(0, 0, W, H);
+
+  // Tile pattern
+  g.fillStyle = `rgba(${Math.max(0,r-30)},${Math.max(0,gC-30)},${Math.max(0,b-30)},0.4)`;
+  for (let y = 0; y < H; y += 48) {
+    for (let x = (y / 48 % 2) * 32; x < W; x += 64) {
+      g.fillRect(x, y, 32, 24);
+    }
   }
-  g.strokeStyle = '#fff3d6';
-  g.lineWidth = 8;
-  g.strokeRect(10, 10, 492, 236);
-  g.fillStyle = '#fff3d6';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.font = '900 84px Arial, sans-serif';
-  g.fillText(line1, 256, 96);
-  g.font = '700 44px Arial, sans-serif';
-  g.fillText(line2, 256, 182);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
+  speckle(g, rng, W, H, 2000, 'rgba(255,255,255,0.05)', 'rgba(0,0,0,0.08)');
 
-// Flat pastel colour with a hint of vertical gradient, for rooftops.
-export function roofTexture(base) {
-  const c = makeCanvas(64, 64);
-  const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 0, 64);
-  grad.addColorStop(0, base);
-  grad.addColorStop(1, 'rgba(0,0,0,0.35)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 64);
+  const heightFn = (x, y) => {
+    let h = 0;
+    const tileX = Math.floor(x / 64), tileY = Math.floor(y / 48);
+    if ((tileX + tileY) % 2 === 0) {
+      const lx = x % 64, ly = y % 48;
+      if (lx < 32 && ly < 24) h = 0.02;
+    }
+    return h;
+  };
 
-  // PBR: roof tiles/membrane, slightly rough
-  const roughnessMap = generateRoughnessMap(0.7, 0.15, Math.abs(base) + 100);
-  const metalnessMap = generateMetalnessMap(false, Math.abs(base) + 200);
-  const normalMap = generateNormalMap((x, y, r) => {
-    // Subtle tile pattern
-    return Math.sin(x * 0.5) * Math.cos(y * 0.5) * 0.1 + (r() - 0.5) * 0.05;
-  }, Math.abs(base) + 300, 64, 64, 0.2);
+  const aoFn = (x, y) => {
+    const lx = x % 64, ly = y % 48;
+    if (lx < 2 || lx > 62 || ly < 2 || ly > 46) return 0.5;
+    return 1;
+  };
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return { 
-    map: tex,
-    roughnessMap,
-    metalnessMap,
-    normalMap
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.85, 0.1, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 0.9),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.4),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.025,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
   };
 }
 
-// ---------------------------------------------------------------------------
-// Later additions.
-// ---------------------------------------------------------------------------
+// ─── WET SAND TEXTURE (HD) ──────────────────────────────────
+export function wetSandTexture() {
+  const seed = 20261123;
+  const rng = mulberry32(seed);
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
 
-// Glow sprite: a soft radial blob, used for street lamps, pickup halos,
-// the sun disc glow and the lighthouse lamp. One texture, many sprites.
-// The taxi beacons and the collectible parcels reuse it, so the
-// new systems add no new texture code.
+  g.fillStyle = '#8a7a5a';
+  g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 30000; i++) {
+    const x = rng() * W, y = rng() * H;
+    const v = 100 + rng() * 50;
+    g.fillStyle = `rgb(${v},${Math.round(v*0.9)},${Math.round(v*0.7)})`;
+    g.fillRect(x, y, 1, 1);
+  }
+
+  const heightFn = (x, y) => {
+    // Wet ripples
+    return Math.sin(x * 0.2) * Math.cos(y * 0.15) * 0.01 + fbm(x * 0.1, y * 0.1, 3, mulberry32(x + y)) * 0.008;
+  };
+
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.3, 0.15, seed + 1), // Wet = smoother
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 1.2),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.6),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.02,
+    aoMap: generateAOMap(() => 1, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
+  };
+}
+
+// ─── KERB TEXTURE (HD) ──────────────────────────────────────
+export function kerbTexture() {
+  const seed = 20261124;
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+
+  g.fillStyle = '#5a5f66';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = '#7a8a9a';
+  for (let x = 0; x < W; x += 32) g.fillRect(x, 0, 2, H);
+
+  const heightFn = (x, y) => (x % 32 < 3 ? 0.03 : 0);
+  const aoFn = (x, y) => (x % 32 < 4 ? 0.6 : 1);
+
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.75, 0.1, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 1.0),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.4),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.04,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
+  };
+}
+
+// ─── CROSSWALK / PLAZA (HD) ─────────────────────────────────
+export function crosswalkTexture() {
+  const seed = 20261125;
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+
+  g.fillStyle = '#2a2d33';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = '#e8e8e0';
+  for (let x = 0; x < W; x += 40) g.fillRect(x, 0, 20, H);
+
+  const heightFn = (x, y) => (Math.floor(x / 20) % 2 === 0 ? 0.015 : -0.005);
+  const aoFn = (x, y) => (x % 40 < 2 || x % 40 > 38 ? 0.6 : 1);
+
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.85, 0.1, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 0.8),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.3),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.02,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
+  };
+}
+
+export function plazaTexture() {
+  const seed = 20261126;
+  const W = HD.ALBEDO, H = HD.ALBEDO;
+  const c = makeCanvas(W, H);
+  const g = c.getContext('2d');
+
+  g.fillStyle = '#c8b8a8';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = '#a89888';
+  for (let x = 0; x < W; x += 32) g.fillRect(x, 0, 1, H);
+  for (let y = 0; y < H; y += 32) g.fillRect(0, y, W, 1);
+
+  const heightFn = (x, y) => {
+    if (x % 32 < 2 || y % 32 < 2) return 0.01;
+    return 0;
+  };
+  const aoFn = (x, y) => (x % 32 < 3 || y % 32 < 3 ? 0.5 : 1);
+
+  return {
+    map: srgbTex(c),
+    roughnessMap: generateRoughnessMap(0.8, 0.1, seed + 1),
+    metalnessMap: generateMetalnessMap(false, seed + 2),
+    normalMap: generateNormalMap(heightFn, seed + 3, HD.NORMAL, HD.NORMAL, 0.7),
+    detailNormalMap: generateDetailNormal(seed + 4, HD.DETAIL, HD.DETAIL, 0.3),
+    displacementMap: generateHeightMap(heightFn, seed + 5),
+    displacementScale: 0.015,
+    aoMap: generateAOMap(aoFn, seed + 6),
+    clearcoatNormalMap: generateClearcoatNormal(seed + 7),
+  };
+}
+
+// ─── GLOW TEXTURE (unchanged) ───────────────────────────────
 export function glowTexture() {
   const c = makeCanvas(64, 64);
   const g = c.getContext('2d');
-  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.3)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
+  return new THREE.CanvasTexture(c);
 }
 
-// Neon sign: dark plate, glowing tube lettering with a halo. Used for the
-// shop fronts and the two neon billboards by the casino and the marina.
-export function neonSignTexture(lines, color = '#ff4fd8', bg = '#12081a') {
+// ─── SIGN / BILLBOARD / NEON (unchanged) ────────────────────
+export function signTexture(title, bg = '#1d2733', fg = '#ffd98a') {
   const c = makeCanvas(512, 128);
   const g = c.getContext('2d');
-  g.fillStyle = bg;
-  g.fillRect(0, 0, 512, 128);
-  g.strokeStyle = color;
-  g.lineWidth = 3;
-  g.globalAlpha = 0.5;
-  g.strokeRect(10, 10, 492, 108);
-  g.globalAlpha = 1;
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.shadowColor = color;
-  g.shadowBlur = 18;
-  g.fillStyle = color;
-  const n = lines.length;
-  lines.forEach((line, i) => {
-    g.font = `bold ${i === 0 ? 44 : 28}px Arial, sans-serif`;
-    g.fillText(line, 256, 64 + (i - (n - 1) / 2) * 38);
-  });
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
+  g.fillStyle = bg; g.fillRect(0, 0, 512, 128);
+  g.font = 'bold 48px Arial'; g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(title, 256, 64);
+  return srgbTex(c);
 }
 
-// Striped red/white barricade face for the police roadblocks.
+export function billboardTexture(top, bottom) {
+  const c = makeCanvas(512, 256);
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#1a1218'); grad.addColorStop(1, '#0d080c');
+  g.fillStyle = grad; g.fillRect(0, 0, 512, 256);
+  g.font = 'bold 72px Arial'; g.fillStyle = '#ffd34d'; g.textAlign = 'center';
+  g.fillText(top, 256, 90);
+  g.font = '40px Arial'; g.fillStyle = '#ffb84f';
+  g.fillText(bottom, 256, 170);
+  return srgbTex(c);
+}
+
+export function neonSignTexture(lines, color = '#ff4fd8') {
+  const c = makeCanvas(512, 64 * lines.length);
+  const g = c.getContext('2d');
+  g.fillStyle = '#0d080c'; g.fillRect(0, 0, 512, c.height);
+  g.font = 'bold 36px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  lines.forEach((l, i) => {
+    const y = 32 + i * 64;
+    // Glow
+    g.shadowColor = color; g.shadowBlur = 20;
+    g.fillStyle = color; g.fillText(l, 256, y);
+    g.shadowBlur = 0;
+    g.fillStyle = '#fff'; g.fillText(l, 256, y);
+  });
+  return srgbTex(c);
+}
+
 export function barrierTexture() {
   const c = makeCanvas(128, 32);
   const g = c.getContext('2d');
@@ -494,148 +777,6 @@ export function barrierTexture() {
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = HD.ANISO;
   return tex;
-}
-
-// ---------------------------------------------------------------------------
-// The ground stops being one flat slab.
-// ---------------------------------------------------------------------------
-
-// Zebra crossing: worn white bars on asphalt, one tile per intersection.
-export function crosswalkTexture() {
-  const c = makeCanvas(128, 128);
-  const g = c.getContext('2d');
-  g.fillStyle = '#2b2e33';
-  g.fillRect(0, 0, 128, 128);
-  speckle(g, mulberry32(11), 128, 128, 300, 'rgba(255,255,255,0.04)', 'rgba(0,0,0,0.12)');
-  g.fillStyle = 'rgba(240,238,230,0.92)';
-  for (let i = 0; i < 5; i++) {
-    g.fillRect(8 + i * 24, 10, 14, 108);
-  }
-
-  // PBR: painted lines on asphalt
-  const roughnessMap = generateRoughnessMap(0.85, 0.1, 13);
-  const metalnessMap = generateMetalnessMap(false, 14);
-  const normalMap = generateNormalMap((x, y, r) => {
-    let h = (r() - 0.5) * 0.1;
-    // White stripes slightly raised
-    const stripe = Math.floor((x - 8) / 24);
-    if (stripe >= 0 && stripe < 5) {
-      const stripeX = 8 + stripe * 24;
-      if (x > stripeX && x < stripeX + 14) h += 0.05;
-    }
-    return h;
-  }, 15, 128, 128, 0.15);
-
-  return { 
-    map: paintTexture(c),
-    roughnessMap,
-    metalnessMap,
-    normalMap
-  };
-}
-
-// Plaza tiles: a pastel checkerboard for the four central intersections.
-export function plazaTexture() {
-  const c = makeCanvas(128, 128);
-  const g = c.getContext('2d');
-  for (let r = 0; r < 4; r++) {
-    for (let col = 0; col < 4; col++) {
-      g.fillStyle = (r + col) % 2 === 0 ? '#d8c9a8' : '#b8a888';
-      g.fillRect(col * 32, r * 32, 32, 32);
-    }
-  }
-  speckle(g, mulberry32(13), 128, 128, 350, 'rgba(255,255,255,0.06)', 'rgba(0,0,0,0.08)');
-  g.strokeStyle = 'rgba(0,0,0,0.22)';
-  g.lineWidth = 2;
-  for (let i = 0; i <= 4; i++) {
-    g.beginPath();
-    g.moveTo(i * 32, 0);
-    g.lineTo(i * 32, 128);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(0, i * 32);
-    g.lineTo(128, i * 32);
-    g.stroke();
-  }
-
-  // PBR: stone tiles
-  const roughnessMap = generateRoughnessMap(0.65, 0.1, 16);
-  const metalnessMap = generateMetalnessMap(false, 17);
-  const normalMap = generateNormalMap((x, y, r) => {
-    let h = (r() - 0.5) * 0.05;
-    // Grout lines
-    const gx = x % 32;
-    const gy = y % 32;
-    if (gx < 2 || gx > 30 || gy < 2 || gy > 30) h -= 0.1;
-    return h;
-  }, 18, 128, 128, 0.2);
-
-  return { 
-    map: paintTexture(c, 2, 2),
-    roughnessMap,
-    metalnessMap,
-    normalMap
-  };
-}
-
-// Kerb: pale concrete with a dark road-side edge and a pale top line.
-export function kerbTexture() {
-  const c = makeCanvas(128, 32);
-  const g = c.getContext('2d');
-  g.fillStyle = '#a89c86';
-  g.fillRect(0, 0, 128, 32);
-  speckle(g, mulberry32(17), 128, 32, 150, 'rgba(255,255,255,0.06)', 'rgba(0,0,0,0.10)');
-  g.fillStyle = 'rgba(0,0,0,0.35)';
-  g.fillRect(0, 26, 128, 6);
-  g.fillStyle = 'rgba(255,255,255,0.25)';
-  g.fillRect(0, 0, 128, 3);
-
-  // PBR: concrete curb
-  const roughnessMap = generateRoughnessMap(0.7, 0.1, 19);
-  const metalnessMap = generateMetalnessMap(false, 20);
-  const normalMap = generateNormalMap((x, y, r) => {
-    let h = (r() - 0.5) * 0.05;
-    // Top edge
-    if (y < 3) h += 0.1;
-    // Road side edge
-    if (y > 26 && y < 32) h -= 0.1;
-    return h;
-  }, 21, 128, 32, 0.2);
-
-  return { 
-    map: paintTexture(c, 8, 1),
-    roughnessMap,
-    metalnessMap,
-    normalMap
-  };
-}
-
-// Wet sand: darker and denser than the dry beach, for the waterline band.
-export function wetSandTexture() {
-  const c = makeCanvas(128, 128);
-  const g = c.getContext('2d');
-  g.fillStyle = '#b98f5e';
-  g.fillRect(0, 0, 128, 128);
-  const rng = mulberry32(23);
-  for (let i = 0; i < 600; i++) {
-    g.fillStyle = rng() < 0.5 ? 'rgba(255,230,180,0.25)' : 'rgba(90,60,30,0.22)';
-    g.fillRect(rng() * 128, rng() * 128, 2, 2);
-  }
-
-  // PBR: wet sand - smoother, more reflective when wet
-  const roughnessMap = generateRoughnessMap(0.6, 0.15, 25);
-  const metalnessMap = generateMetalnessMap(false, 26);
-  const normalMap = generateNormalMap((x, y, r) => {
-    // Smoother than dry sand, subtle ripples
-    return Math.sin(x * 0.1) * Math.cos(y * 0.08) * 0.05 + (r() - 0.5) * 0.03;
-  }, 27, 128, 128, 0.1);
-
-  return { 
-    map: paintTexture(c, 8, 4),
-    roughnessMap,
-    metalnessMap,
-    normalMap
-  };
 }

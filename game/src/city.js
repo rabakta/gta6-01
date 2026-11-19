@@ -30,6 +30,7 @@ export function facadeBucket(h, w) {
 // share a bucket share one material, so the texture count stays bounded
 // while every tower shows the right number of storeys. The material's
 // emissive map makes its lit windows glow at sunset.
+// HD: displacementMap, aoMap, detailNormalMap, clearcoatNormalMap
 const facadeCache = new Map();
 function facadeMaterial(base, seed, floors, cols) {
   const key = base + '|' + seed + '|' + floors + '|' + cols;
@@ -41,6 +42,15 @@ function facadeMaterial(base, seed, floors, cols) {
       roughnessMap: t.roughnessMap,
       metalnessMap: t.metalnessMap,
       normalMap: t.normalMap,
+      normalScale: new THREE.Vector2(1.2, 1.2),
+      displacementMap: t.displacementMap,
+      displacementScale: t.displacementScale || 0.05,
+      aoMap: t.aoMap,
+      aoMapIntensity: 1.0,
+      detailNormalMap: t.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: t.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
       emissive: 0xffb45e, 
       emissiveIntensity: 0.85, 
       emissiveMap: t.emissiveMap 
@@ -210,6 +220,15 @@ export function buildCity(scene) {
       roughnessMap: pavementTex.roughnessMap,
       metalnessMap: pavementTex.metalnessMap,
       normalMap: pavementTex.normalMap,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: pavementTex.displacementMap,
+      displacementScale: pavementTex.displacementScale || 0.015,
+      aoMap: pavementTex.aoMap,
+      aoMapIntensity: 1.0,
+      detailNormalMap: pavementTex.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: pavementTex.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
       color: 0xbfb49e 
     }),
   );
@@ -233,7 +252,16 @@ export function buildCity(scene) {
       map: sandTex.map, 
       roughnessMap: sandTex.roughnessMap,
       metalnessMap: sandTex.metalnessMap,
-      normalMap: sandTex.normalMap
+      normalMap: sandTex.normalMap,
+      normalScale: new THREE.Vector2(0.8, 0.8),
+      displacementMap: sandTex.displacementMap,
+      displacementScale: sandTex.displacementScale || 0.03,
+      aoMap: sandTex.aoMap,
+      aoMapIntensity: 0.8,
+      detailNormalMap: sandTex.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: sandTex.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
     }),
   );
   sand.rotation.x = -Math.PI / 2;
@@ -249,7 +277,16 @@ export function buildCity(scene) {
       map: wetSandTex.map, 
       roughnessMap: wetSandTex.roughnessMap,
       metalnessMap: wetSandTex.metalnessMap,
-      normalMap: wetSandTex.normalMap
+      normalMap: wetSandTex.normalMap,
+      normalScale: new THREE.Vector2(0.8, 0.8),
+      displacementMap: wetSandTex.displacementMap,
+      displacementScale: wetSandTex.displacementScale || 0.02,
+      aoMap: wetSandTex.aoMap,
+      aoMapIntensity: 0.8,
+      detailNormalMap: wetSandTex.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: wetSandTex.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
     }),
   );
   wetSand.rotation.x = -Math.PI / 2;
@@ -278,7 +315,16 @@ export function buildCity(scene) {
     map: roadTex.map, 
     roughnessMap: roadTex.roughnessMap,
     metalnessMap: roadTex.metalnessMap,
-    normalMap: roadTex.normalMap
+    normalMap: roadTex.normalMap,
+    normalScale: new THREE.Vector2(1.5, 1.5),
+    displacementMap: roadTex.displacementMap,
+    displacementScale: roadTex.displacementScale || 0.02,
+    aoMap: roadTex.aoMap,
+    aoMapIntensity: 1.0,
+    detailNormalMap: roadTex.detailNormalMap,
+    detailNormalScale: new THREE.Vector2(1, 1),
+    clearcoatNormalMap: roadTex.clearcoatNormalMap,
+    clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
   });
   const roadLen = CITY.half * 2 + 20;
   for (const l of roadLines()) {
@@ -297,13 +343,22 @@ export function buildCity(scene) {
   // Kerb strips along every road edge, so the asphalt ends in a kerb
   // instead of melting into the pavement. The two axes sit at different
   // heights (0.09 / 0.095) so they never z-fight where they cross.
-  const kerbTex = kerbTexture();
-  const kerbMat = new THREE.MeshStandardMaterial({ 
-    map: kerbTex.map, 
-    roughnessMap: kerbTex.roughnessMap,
-    metalnessMap: kerbTex.metalnessMap,
-    normalMap: kerbTex.normalMap
-  });
+    const kerbTex = kerbTexture();
+    const kerbMat = new THREE.MeshStandardMaterial({ 
+      map: kerbTex.map, 
+      roughnessMap: kerbTex.roughnessMap,
+      metalnessMap: kerbTex.metalnessMap,
+      normalMap: kerbTex.normalMap,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: kerbTex.displacementMap,
+      displacementScale: kerbTex.displacementScale || 0.04,
+      aoMap: kerbTex.aoMap,
+      aoMapIntensity: 1.0,
+      detailNormalMap: kerbTex.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: kerbTex.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+    });
   const kerbGeoZ = new THREE.PlaneGeometry(1.2, roadLen);
   const kerbGeoX = new THREE.PlaneGeometry(roadLen, 1.2);
   for (const l of roadLines()) {
@@ -327,21 +382,39 @@ export function buildCity(scene) {
 
   // A zebra crossing on every intersection, plaza tiles on the four
   // central ones instead. One shared geometry and material each.
-  const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
-  const crossTex = crosswalkTexture();
-  const crossMat = new THREE.MeshStandardMaterial({ 
-    map: crossTex.map, 
-    roughnessMap: crossTex.roughnessMap,
-    metalnessMap: crossTex.metalnessMap,
-    normalMap: crossTex.normalMap
-  });
-  const plazaTex = plazaTexture();
-  const plazaMat = new THREE.MeshStandardMaterial({ 
-    map: plazaTex.map, 
-    roughnessMap: plazaTex.roughnessMap,
-    metalnessMap: plazaTex.metalnessMap,
-    normalMap: plazaTex.normalMap
-  });
+    const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
+    const crossTex = crosswalkTexture();
+    const crossMat = new THREE.MeshStandardMaterial({ 
+      map: crossTex.map, 
+      roughnessMap: crossTex.roughnessMap,
+      metalnessMap: crossTex.metalnessMap,
+      normalMap: crossTex.normalMap,
+      normalScale: new THREE.Vector2(0.5, 0.5),
+      displacementMap: crossTex.displacementMap,
+      displacementScale: crossTex.displacementScale || 0.02,
+      aoMap: crossTex.aoMap,
+      aoMapIntensity: 1.0,
+      detailNormalMap: crossTex.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: crossTex.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+    });
+    const plazaTex = plazaTexture();
+    const plazaMat = new THREE.MeshStandardMaterial({ 
+      map: plazaTex.map, 
+      roughnessMap: plazaTex.roughnessMap,
+      metalnessMap: plazaTex.metalnessMap,
+      normalMap: plazaTex.normalMap,
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      displacementMap: plazaTex.displacementMap,
+      displacementScale: plazaTex.displacementScale || 0.015,
+      aoMap: plazaTex.aoMap,
+      aoMapIntensity: 1.0,
+      detailNormalMap: plazaTex.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: plazaTex.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+    });
   const plazaGeo = new THREE.PlaneGeometry(16, 16);
   const lines = roadLines();
   lines.forEach((lx, ix) => {
@@ -376,7 +449,16 @@ export function buildCity(scene) {
       map: rt.map, 
       roughnessMap: rt.roughnessMap,
       metalnessMap: rt.metalnessMap,
-      normalMap: rt.normalMap
+      normalMap: rt.normalMap,
+      normalScale: new THREE.Vector2(1, 1),
+      displacementMap: rt.displacementMap,
+      displacementScale: rt.displacementScale || 0.025,
+      aoMap: rt.aoMap,
+      aoMapIntensity: 1.0,
+      detailNormalMap: rt.detailNormalMap,
+      detailNormalScale: new THREE.Vector2(1, 1),
+      clearcoatNormalMap: rt.clearcoatNormalMap,
+      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
     });
   });
   const parapetMat = new THREE.MeshStandardMaterial({ color: 0x4a3f35, roughness: 0.8 });
