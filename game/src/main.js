@@ -30,10 +30,18 @@ class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 2000);
 
     this.world = buildCity(this.scene);
+    // Time-of-day references from world
+    this.sun = this.world.sun;
+    this.skyMaterial = this.world.skyMaterial;
+    this.hemiLight = this.world.hemiLight;
+    this.sunDisc = this.world.sunDisc;
+    this.sunGlow = this.world.sunGlow;
+
     this.particles = new ParticleSystem(this.scene);
     this.audio = new AudioEngine();
     this.hud = new HUD(this.world);
@@ -61,7 +69,8 @@ class Game {
     // Rio can steal (see spawnParked).
     this.birds = new Birds(this.scene);
     this.parked = [];
-    // Headlight pool: one soft light on the road ahead of the driven car.
+    // Headlight pool: real SpotLights for the driven car, plus a soft
+    // glow mesh for the cheap fill. SpotLights cast shadows at night.
     this.headlightPool = new THREE.Group();
     const poolMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(5, 9),
@@ -69,6 +78,24 @@ class Game {
     );
     poolMesh.rotation.x = -Math.PI / 2;
     this.headlightPool.add(poolMesh);
+    // Two SpotLights for left/right headlights (only for player car)
+    this.headlightLeft = new THREE.SpotLight(0xffe9a8, 0, 35, Math.PI / 6, 0.3, 0.5);
+    this.headlightLeft.position.set(-1.2, 0.8, 0);
+    this.headlightLeft.target.position.set(-1.2, 0, 20);
+    this.headlightLeft.castShadow = true;
+    this.headlightLeft.shadow.mapSize.set(512, 512);
+    this.headlightLeft.shadow.camera.near = 1;
+    this.headlightLeft.shadow.camera.far = 40;
+    this.headlightLeft.shadow.camera.fov = 50;
+    this.headlightRight = new THREE.SpotLight(0xffe9a8, 0, 35, Math.PI / 6, 0.3, 0.5);
+    this.headlightRight.position.set(1.2, 0.8, 0);
+    this.headlightRight.target.position.set(1.2, 0, 20);
+    this.headlightRight.castShadow = true;
+    this.headlightRight.shadow.mapSize.set(512, 512);
+    this.headlightRight.shadow.camera.near = 1;
+    this.headlightRight.shadow.camera.far = 40;
+    this.headlightRight.shadow.camera.fov = 50;
+    this.headlightPool.add(this.headlightLeft, this.headlightLeft.target, this.headlightRight, this.headlightRight.target);
     this.headlightPool.visible = false;
     this.scene.add(this.headlightPool);
 
@@ -92,6 +119,16 @@ class Game {
     this.exhaustTimer = 0;
     this.dustTimer = 0;
     this.roadblockAlerted = false;
+
+    // Time-of-day cycle (24 min real = 24 hours game)
+    this.tod = 0.775;           // start at 18:24 (0.775 of 24h)
+    this.todSpeed = 1 / (24 * 60); // per second
+    this.sun = null;        // reference to sun light
+    this.skyMaterial = null;
+    this.hemiLight = null;
+    this.fogColor = new THREE.Color();
+    this.sunDisc = null;
+    this.sunGlow = null;
 
     this.traffic.spawn(14, { x: -140, z: 140 }, 150);
     this.peds.spawn(24, { x: -140, z: 140 }, 120);
@@ -581,11 +618,118 @@ class Game {
     this.notify('Patched up at the hospital. Back to work, Rio.');
   }
 
+  // Time-of-day cycle: animate sun, sky, fog, lights over 24 min = 24 hours
+  updateTimeOfDay(dt) {
+    this.tod = (this.tod + dt * this.todSpeed) % 1;
+    const angle = this.tod * Math.PI * 2 - Math.PI / 2; // 0 = midnight, PI/2 = sunrise, PI = noon, 3PI/2 = sunset
+    const sunHeight = Math.sin(angle);
+    const sunAzimuth = Math.cos(angle);
+
+    // Sun position (orbit around city)
+    const radius = 350;
+    if (this.sun) {
+      this.sun.position.set(sunAzimuth * radius, Math.max(20, sunHeight * radius), -120);
+      this.sun.target.position.set(0, 0, 0);
+      // Intensity: 0 at night, 2.8 at noon
+      const intensity = THREE.MathUtils.clamp(sunHeight * 3.5, 0, 2.8);
+      this.sun.intensity = intensity;
+      this.sun.castShadow = intensity > 0.1;
+    }
+
+    // Sun disc & glow (on sky dome)
+    const skyRadius = 830;
+    if (this.sunDisc) {
+      this.sunDisc.position.set(sunAzimuth * skyRadius, Math.max(10, sunHeight * skyRadius), -120);
+      this.sunDisc.lookAt(0, 0, 0);
+      this.sunDisc.visible = sunHeight > -0.2;
+    }
+    if (this.sunGlow) {
+      this.sunGlow.position.set(sunAzimuth * 820, Math.max(10, sunHeight * 820), -120);
+      this.sunGlow.material.opacity = THREE.MathUtils.clamp((sunHeight + 0.3) * 1.2, 0, 0.85);
+      this.sunGlow.visible = sunHeight > -0.3;
+    }
+
+    // Sky shader uniforms (top, mid, horizon colors)
+    if (this.skyMaterial) {
+      const uniforms = this.skyMaterial.uniforms;
+      // Night colors
+      const nightTop = new THREE.Color(0x0a1220);
+      const nightMid = new THREE.Color(0x1a1a3a);
+      const nightHorizon = new THREE.Color(0x2a1a2a);
+      // Dawn/dusk colors
+      const dawnHorizon = new THREE.Color(0xff6a3a);
+      const dawnMid = new THREE.Color(0xff8a5a);
+      // Day colors
+      const dayTop = new THREE.Color(0x2a4f7e);
+      const dayMid = new THREE.Color(0x6a9fd6);
+      const dayHorizon = new THREE.Color(0xffb87a);
+
+      let top, mid, horizon;
+      if (sunHeight < -0.3) {
+        // Night
+        top = nightTop; mid = nightMid; horizon = nightHorizon;
+      } else if (sunHeight < 0) {
+        // Dawn/dusk transition
+        const t = (sunHeight + 0.3) / 0.3; // 0..1
+        top = nightTop.clone().lerp(dayTop, t * 0.3);
+        mid = nightMid.clone().lerp(dawnMid, t);
+        horizon = nightHorizon.clone().lerp(dawnHorizon, t);
+      } else if (sunHeight < 0.5) {
+        // Morning
+        const t = sunHeight / 0.5;
+        top = dayTop.clone().lerp(dawnMid, 0.2).lerp(dayTop, t);
+        mid = dawnMid.clone().lerp(dayMid, t);
+        horizon = dawnHorizon.clone().lerp(dayHorizon, t);
+      } else {
+        // Day
+        top = dayTop; mid = dayMid; horizon = dayHorizon;
+      }
+      uniforms.top.value.lerp(top, 0.02);
+      uniforms.mid.value.lerp(mid, 0.02);
+      uniforms.horizon.value.lerp(horizon, 0.02);
+    }
+
+    // Hemisphere light (ambient)
+    if (this.hemiLight) {
+      const groundCol = new THREE.Color(0x5a4a38);
+      const skyCol = new THREE.Color(0x9db8d6);
+      const nightSky = new THREE.Color(0x1a1a2e);
+      const nightGround = new THREE.Color(0x1a1210);
+      const t = THREE.MathUtils.clamp((sunHeight + 0.2) / 0.7, 0, 1);
+      this.hemiLight.color.lerp(nightSky, 1 - t);
+      this.hemiLight.groundColor.lerp(nightGround, 1 - t);
+      this.hemiLight.intensity = THREE.MathUtils.clamp(0.3 + t * 0.7, 0.3, 1.0);
+    }
+
+    // Fog color
+    if (this.scene.fog) {
+      const dayFog = new THREE.Color(0xe8965f);
+      const nightFog = new THREE.Color(0x1a1a2e);
+      const dawnFog = new THREE.Color(0xff6a3a);
+      let fogCol;
+      if (sunHeight < -0.3) fogCol = nightFog;
+      else if (sunHeight < 0) fogCol = nightFog.clone().lerp(dawnFog, (sunHeight + 0.3) / 0.3);
+      else if (sunHeight < 0.5) fogCol = dawnFog.clone().lerp(dayFog, sunHeight / 0.5);
+      else fogCol = dayFog;
+      this.fogColor.lerp(fogCol, 0.01);
+      this.scene.fog.color.copy(this.fogColor);
+    }
+
+    // Update clock display (24h format)
+    const gameHour = Math.floor(this.tod * 24);
+    const gameMin = Math.floor((this.tod * 24 * 60) % 60);
+    this.clockSec = gameHour * 3600 + gameMin * 60;
+  }
+
   // --- per-frame update -------------------------------------------------------
   update(dt) {
     this.elapsed += dt;
     this.save.stats.playSeconds = (this.save.stats.playSeconds || 0) + dt;
     this.clockSec += dt * 12; // a game minute every 5 real seconds
+
+    // Time-of-day cycle
+    this.updateTimeOfDay(dt);
+
     const p = this.player;
 
     // Weapon switching.
@@ -677,13 +821,35 @@ class Game {
     }
 
     // Headlight pool follows the driven car (hidden on foot).
+    // SpotLights only active at night (tod: 0.75..1.0 = 18:00..24:00, 0.0..0.25 = 0:00..6:00)
+    const night = this.tod > 0.75 || this.tod < 0.25;
     if (p.inCar) {
       const car = p.inCar;
       this.headlightPool.visible = true;
-      this.headlightPool.position.set(car.pos.x + Math.sin(car.heading) * 7, 0.12, car.pos.z + Math.cos(car.heading) * 7);
-      this.headlightPool.rotation.y = car.heading + Math.PI;
+      this.headlightPool.position.set(car.pos.x, 0, car.pos.z);
+      this.headlightPool.rotation.y = car.heading;
+      // Update SpotLight targets to point forward
+      const forward = 30;
+      this.headlightLeft.target.position.set(-1.2, 0, forward);
+      this.headlightRight.target.position.set(1.2, 0, forward);
+      this.headlightLeft.intensity = night ? 2.5 : 0;
+      this.headlightRight.intensity = night ? 2.5 : 0;
+      // Update car's own SpotLights (casts shadows)
+      car.updateHeadlights(this.tod, true);
     } else {
       this.headlightPool.visible = false;
+      this.headlightLeft.intensity = 0;
+      this.headlightRight.intensity = 0;
+    }
+    // Update traffic car headlights (no shadows for performance)
+    for (const car of this.traffic.cars) {
+      car.updateHeadlights(this.tod, false);
+    }
+    for (const car of this.police.cars) {
+      car.updateHeadlights(this.tod, false);
+    }
+    for (const car of this.parked) {
+      car.updateHeadlights(this.tod, false);
     }
 
     // Car-vs-car / car-vs-ped collisions for the player's car.
@@ -883,6 +1049,8 @@ class Game {
       this.camera.lookAt(0, 10, 0);
       this.world.seaMaterial.uniforms.t.value = t;
       this.particles.update(dt);
+      // Update time-of-day in menu too
+      this.updateTimeOfDay(dt);
     }
     // The lighthouse beam sweeps the bay in every state.
     if (this.world.lighthouseBeam) this.world.lighthouseBeam.rotation.y += dt * 0.5;
@@ -898,6 +1066,7 @@ class Game {
 window.addEventListener('error', (e) => { document.title = 'ERR: ' + (e.message || 'unknown'); });
 
 const game = new Game();
+window.game = game; // Expose for debugging
 // Screenshot staging must run after the first boot, before capture.
 if (game.shotMode) {
   // Test hook: live probes reach the game only in shot mode, never in

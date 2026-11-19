@@ -41,6 +41,37 @@ const HUD_CSS = [
   '#health-bar.hit{box-shadow:0 0 0 2px rgba(255,60,40,0.9)}',
   '#cash.gain{color:#b8ffd0}',
   '#ammo.low{color:#ff5a4d;font-weight:900}',
+  // Weapon wheel
+  '#weapon-wheel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:320px;height:320px;pointer-events:none;z-index:20;opacity:0;transition:opacity .15s}',
+  '#weapon-wheel.active{opacity:1;pointer-events:auto}',
+  '#weapon-wheel .wheel-bg{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at center,rgba(10,16,24,0.95) 60%,rgba(0,0,0,0.98) 100%);border:2px solid #4a6fa5;box-shadow:0 0 30px rgba(0,0,0,0.8),inset 0 0 20px rgba(74,111,165,0.3)}',
+  '#weapon-wheel .wheel-slot{position:absolute;width:80px;height:80px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:transform .1s}',
+  '#weapon-wheel .wheel-slot:hover{transform:scale(1.15)}',
+  '#weapon-wheel .wheel-slot .icon{font-size:28px;margin-bottom:4px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.8))}',
+  '#weapon-wheel .wheel-slot .label{font-size:11px;font-weight:700;text-transform:uppercase;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.9)}',
+  '#weapon-wheel .wheel-slot .ammo{font-size:10px;color:#bcd6ea}',
+  '#weapon-wheel .wheel-slot .hotkey{position:absolute;top:4px;right:4px;font-size:10px;color:#ffd34d;font-weight:700;background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px}',
+  '#weapon-wheel .wheel-slot.selected{filter:brightness(1.4)}',
+  '#weapon-wheel .wheel-slot.selected::before{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid #ffd34d;box-shadow:0 0 10px #ffd34d}',
+  '#weapon-wheel .wheel-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80px;height:80px;border-radius:50%;background:rgba(10,16,24,0.9);border:2px solid #4a6fa5;display:flex;align-items:center;justify-content:center;pointer-events:none}',
+  '#weapon-wheel .wheel-center .current-weapon{font-size:12px;font-weight:700;color:#ffd34d;text-transform:uppercase;text-shadow:0 1px 3px rgba(0,0,0,0.9)}',
+  // Phone pause menu
+  '#phone-menu{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.9);width:360px;height:640px;background:linear-gradient(180deg,#0d121a 0%,#1a2530 100%);border:2px solid #4a6fa5;border-radius:32px;box-shadow:0 0 40px rgba(0,0,0,0.9),0 20px 60px rgba(0,0,0,0.7);z-index:30;opacity:0;visibility:hidden;transition:opacity .2s,transform .2s,visibility .2s;overflow:hidden;font-family:Arial,sans-serif}',
+  '#phone-menu.active{opacity:1;visibility:visible;transform:translate(-50%,-50%) scale(1)}',
+  '#phone-menu .phone-header{height:60px;background:rgba(0,0,0,0.5);border-bottom:1px solid rgba(74,111,165,0.3);display:flex;align-items:center;justify-content:space-between;padding:0 20px;color:#fff}',
+  '#phone-menu .phone-time{font-size:24px;font-weight:700;letter-spacing:2px}',
+  '#phone-menu .phone-battery{font-size:14px;color:#bcd6ea}',
+  '#phone-menu .phone-apps{padding:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;height:calc(100% - 60px);overflow-y:auto}',
+  '#phone-menu .phone-app{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(74,111,165,0.2);border-radius:16px;cursor:pointer;transition:all .15s;color:#fff;text-decoration:none}',
+  '#phone-menu .phone-app:hover{background:rgba(74,111,165,0.3);border-color:#ffd34d;transform:translateY(-4px);box-shadow:0 8px 20px rgba(74,111,165,0.3)}',
+  '#phone-menu .phone-app .icon{font-size:36px;margin-bottom:8px}',
+  '#phone-menu .phone-app .name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}',
+  '#phone-menu .phone-app .desc{font-size:10px;color:#8aa8c8;margin-top:4px;text-align:center}',
+  '#phone-menu .phone-footer{height:50px;background:rgba(0,0,0,0.5);border-top:1px solid rgba(74,111,165,0.3);display:flex;align-items:center;justify-content:center;gap:40px;padding:0 20px;color:#6a8ab8;font-size:12px}',
+  '#phone-menu .phone-detail{display:none;position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(10,16,24,0.98);z-index:10;padding:20px;overflow-y:auto;color:#fff}',
+  '#phone-menu .phone-detail.active{display:block}',
+  '#phone-menu .phone-detail .back-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(74,111,165,0.2);border:1px solid #4a6fa5;border-radius:8px;color:#ffd34d;font-weight:700;cursor:pointer;margin-bottom:20px;transition:background .15s}',
+  '#phone-menu .phone-detail .back-btn:hover{background:rgba(74,111,165,0.4)}',
 ].join('\n');
 
 const HUD_IDS = ['cash', 'health-fill', 'health-num', 'armor', 'mods', 'stars', 'weapon', 'ammo', 'weapons', 'speed', 'radio', 'objective', 'toast', 'clock', 'menu', 'menu-title', 'menu-body', 'menu-hint', 'shop', 'shop-title', 'shop-items', 'damage'];
@@ -121,6 +152,10 @@ export class HUD {
         this.menuActions.onVolume(t.dataset.vol, +t.value);
       }
     });
+    // Weapon wheel
+    this.weaponWheelEl = this.buildWeaponWheel();
+    // Phone pause menu
+    this.phoneMenuEl = this.buildPhoneMenu();
   }
 
   bindTouch(touch) { this.touch = touch; }
@@ -357,150 +392,260 @@ export class HUD {
     const ctx = this.mapCtx;
     const S = this.map.width; // 220
     const half = CITY.half + 30;
-    const toMap = (x, z) => [((x + half) / (half * 2)) * S, ((z + half) / (half * 2)) * S];
+    const scale = S / (half * 2);
+    const range = half; // world units shown on map
+
+    // Clear with dark background
     ctx.clearRect(0, 0, S, S);
-    ctx.fillStyle = 'rgba(12, 18, 26, 0.82)';
+    ctx.fillStyle = '#0c121a';
     ctx.fillRect(0, 0, S, S);
-    // Sea on the east edge, beach strip beside it.
-    const [seaX] = toMap(CITY.beachEnd, 0);
-    ctx.fillStyle = '#1e6f8e';
-    ctx.fillRect(seaX, 0, S - seaX, S);
-    const [beachX] = toMap(CITY.half, 0);
-    ctx.fillStyle = '#d9b380';
-    ctx.fillRect(beachX, 0, seaX - beachX, S);
-    // North marker.
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.font = 'bold 11px Arial, sans-serif';
-    ctx.fillText('N', 6, 14);
-    // Roads.
-    ctx.strokeStyle = 'rgba(220, 220, 210, 0.75)';
-    ctx.lineWidth = 2;
-    for (const l of this.world.roads) {
-      const [x] = toMap(l, 0);
-      const [, z] = toMap(0, l);
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, S); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, z); ctx.lineTo(S, z); ctx.stroke();
+
+    // Player position in world
+    const px = state.player.x;
+    const pz = state.player.z;
+    const pHeading = state.player.heading;
+
+    // Transform: world -> map (rotated so player forward = up)
+    // Map center = player position
+    const centerX = S / 2;
+    const centerZ = S / 2;
+
+    function worldToMap(wx, wz) {
+      const dx = wx - px;
+      const dz = wz - pz;
+      // Rotate by -heading so player forward points up (-Z on canvas)
+      const cos = Math.cos(-pHeading);
+      const sin = Math.sin(-pHeading);
+      const rx = dx * cos - dz * sin;
+      const rz = dx * sin + dz * cos;
+      return [centerX + rx * scale, centerZ + rz * scale];
     }
-    // Shops (green squares) and the safehouse (gold dot).
+
+    // Draw roads (static, so we can precompute but let's keep simple)
+    ctx.strokeStyle = 'rgba(120, 120, 110, 0.5)';
+    ctx.lineWidth = 2 * scale;
+    for (const l of this.world.roads) {
+      // Vertical roads
+      const [x1, z1] = worldToMap(l, -range);
+      const [x2, z2] = worldToMap(l, range);
+      if (Math.abs(x1 - centerX) < S / 2 + 20) {
+        ctx.beginPath(); ctx.moveTo(x1, z1); ctx.lineTo(x2, z2); ctx.stroke();
+      }
+      // Horizontal roads
+      const [x3, z3] = worldToMap(-range, l);
+      const [x4, z4] = worldToMap(range, l);
+      if (Math.abs(z3 - centerZ) < S / 2 + 20) {
+        ctx.beginPath(); ctx.moveTo(x3, z3); ctx.lineTo(x4, z4); ctx.stroke();
+      }
+    }
+
+    // Sea (east edge)
+    const [seaX1] = worldToMap(CITY.beachEnd, -range);
+    const [seaX2] = worldToMap(CITY.beachEnd, range);
+    if (seaX1 < S) {
+      ctx.fillStyle = '#1e6f8e';
+      ctx.fillRect(Math.max(0, seaX1), 0, S - Math.max(0, seaX1), S);
+    }
+    // Beach
+    const [beachX1] = worldToMap(CITY.half, -range);
+    const [beachX2] = worldToMap(CITY.half, range);
+    if (beachX1 < S && seaX1 > 0) {
+      ctx.fillStyle = '#d9b380';
+      ctx.fillRect(Math.max(0, beachX1), 0, Math.max(0, seaX1 - beachX1), S);
+    }
+
+    // Shops (green squares)
     ctx.fillStyle = '#7ee2a8';
     for (const s of this.world.shops) {
-      const [x, z] = toMap(s.x, s.z);
-      ctx.fillRect(x - 3, z - 3, 6, 6);
+      const [x, z] = worldToMap(s.x, s.z);
+      if (this.inMapView(x, z, S)) {
+        const size = 5 * scale;
+        ctx.fillRect(x - size / 2, z - size / 2, size, size);
+      }
     }
+
+    // Safehouse (gold house icon)
     const sh = this.world.places.safehouse;
-    const [hx, hz] = toMap(sh.x, sh.z);
-    ctx.fillStyle = '#ffd34d';
-    ctx.beginPath(); ctx.arc(hx, hz, 5, 0, Math.PI * 2); ctx.fill();
-    // Bus stops — cyan squares, so a rider can find the next stop.
+    const [hx, hz] = worldToMap(sh.x, sh.z);
+    if (this.inMapView(hx, hz, S)) {
+      ctx.fillStyle = '#ffd34d';
+      ctx.beginPath();
+      ctx.moveTo(hx, hz - 6);
+      ctx.lineTo(hx + 5, hz + 2);
+      ctx.lineTo(hx + 5, hz + 6);
+      ctx.lineTo(hx - 5, hz + 6);
+      ctx.lineTo(hx - 5, hz + 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Bus stops (cyan squares)
     ctx.fillStyle = '#4fd8ff';
     for (const s of this.world.busStops || []) {
-      const [x, z] = toMap(s.x, s.z);
-      ctx.fillRect(x - 3, z - 3, 6, 6);
+      const [x, z] = worldToMap(s.x, s.z);
+      if (this.inMapView(x, z, S)) {
+        const size = 5 * scale;
+        ctx.fillRect(x - size / 2, z - size / 2, size, size);
+      }
     }
-    // Gang turf — faint colour wash + hideout dot, so Rio knows where not to stroll.
+
+    // Gang turf (faint wash) + hideout dots
     for (const g of state.gangs || []) {
-      const [x0, z0] = toMap(g.x0, g.z0);
-      const [x1, z1] = toMap(g.x1, g.z1);
+      const [x0, z0] = worldToMap(g.x0, g.z0);
+      const [x1, z1] = worldToMap(g.x1, g.z1);
       const col = '#' + g.color.toString(16).padStart(6, '0');
       ctx.fillStyle = col;
-      ctx.globalAlpha = 0.14;
-      ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
+      ctx.globalAlpha = 0.1;
+      const minX = Math.min(x0, x1);
+      const maxX = Math.max(x0, x1);
+      const minZ = Math.min(z0, z1);
+      const maxZ = Math.max(z0, z1);
+      if (maxX > 0 && minX < S && maxZ > 0 && minZ < S) {
+        ctx.fillRect(minX, minZ, maxX - minX, maxZ - minZ);
+      }
       ctx.globalAlpha = 1;
-      const [hx, hz] = toMap(g.hx, g.hz);
-      ctx.beginPath(); ctx.arc(hx, hz, 4, 0, Math.PI * 2); ctx.fill();
-    }
-    // World pickups — green health, blue armour, orange guns.
-    for (const p of state.pickups || []) {
-      const [x, z] = toMap(p.x, p.z);
-      ctx.fillStyle = p.kind === 'health' ? '#2fd47a' : p.kind === 'weapon' ? '#ff8c42' : '#4da3ff';
-      if (p.kind === 'health') {
-        ctx.fillRect(x - 1, z - 4, 2, 8);
-        ctx.fillRect(x - 4, z - 1, 8, 2);
-      } else if (p.kind === 'weapon') {
-        ctx.fillRect(x - 3, z - 3, 6, 6);
-      } else {
+      const [hx, hz] = worldToMap(g.hx, g.hz);
+      if (this.inMapView(hx, hz, S)) {
         ctx.beginPath();
-        ctx.moveTo(x, z - 4); ctx.lineTo(x + 4, z); ctx.lineTo(x, z + 4); ctx.lineTo(x - 4, z);
-        ctx.closePath(); ctx.fill();
+        ctx.arc(hx, hz, 3, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
-    // Police roadblocks — red bars across the road.
+
+    // World pickups
+    for (const p of state.pickups || []) {
+      const [x, z] = worldToMap(p.x, p.z);
+      if (this.inMapView(x, z, S)) {
+        ctx.fillStyle = p.kind === 'health' ? '#2fd47a' : p.kind === 'weapon' ? '#ff8c42' : '#4da3ff';
+        if (p.kind === 'health') {
+          ctx.fillRect(x - 1, z - 4, 2, 8);
+          ctx.fillRect(x - 4, z - 1, 8, 2);
+        } else if (p.kind === 'weapon') {
+          ctx.fillRect(x - 3, z - 3, 6, 6);
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(x, z - 4); ctx.lineTo(x + 4, z); ctx.lineTo(x, z + 4); ctx.lineTo(x - 4, z);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+
+    // Police roadblocks (red bars)
     ctx.fillStyle = '#ff5a4d';
     for (const b of state.roadblocks || []) {
-      const [x, z] = toMap(b.x, b.z);
-      ctx.save();
-      ctx.translate(x, z);
-      ctx.rotate(b.heading);
-      ctx.fillRect(-6, -1.5, 12, 3);
-      ctx.restore();
-    }
-    // Objective marker (pulsing gold ring).
-    if (state.markerPos) {
-      const [mx, mz] = toMap(state.markerPos.x, state.markerPos.z);
-      const r = 5 + Math.sin(performance.now() / 200) * 2;
-      ctx.strokeStyle = '#ffd34d';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(mx, mz, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#ffd34d';
-      ctx.beginPath(); ctx.arc(mx, mz, 2.5, 0, Math.PI * 2); ctx.fill();
-      // Waypoint arrow: a gold line from the player arrow toward the
-      // marker, so the objective reads as a direction, not just a dot.
-      const [px0, pz0] = toMap(state.player.x, state.player.z);
-      const dx = mx - px0, dz = mz - pz0;
-      const len = Math.hypot(dx, dz);
-      if (len > 14) {
-        const ux = dx / len, uz = dz / len;
-        const ax = px0 + ux * 12, az = pz0 + uz * 12;
-        const bx = px0 + ux * (len - 8), bz = pz0 + uz * (len - 8);
-        ctx.strokeStyle = 'rgba(255,211,77,0.85)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(ax, az); ctx.lineTo(bx, bz); ctx.stroke();
-        ctx.fillStyle = '#ffd34d';
-        ctx.beginPath();
-        ctx.moveTo(bx + ux * 6, bz + uz * 6);
-        ctx.lineTo(bx - uz * 4, bz + ux * 4);
-        ctx.lineTo(bx + uz * 4, bz - ux * 4);
-        ctx.closePath(); ctx.fill();
+      const [x, z] = worldToMap(b.x, b.z);
+      if (this.inMapView(x, z, S)) {
+        ctx.save();
+        ctx.translate(x, z);
+        ctx.rotate(b.heading - pHeading);
+        ctx.fillRect(-6 * scale, -1.5 * scale, 12 * scale, 3 * scale);
+        ctx.restore();
       }
     }
-    // Traffic cars (grey dots), police (blue squares).
+
+    // Objective marker (pulsing gold ring)
+    if (state.markerPos) {
+      const [mx, mz] = worldToMap(state.markerPos.x, state.markerPos.z);
+      if (this.inMapView(mx, mz, S, 20)) {
+        const r = 6 + Math.sin(performance.now() / 200) * 2;
+        ctx.strokeStyle = '#ffd34d';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(mx, mz, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffd34d';
+        ctx.beginPath(); ctx.arc(mx, mz, 3, 0, Math.PI * 2); ctx.fill();
+        // Waypoint arrow from player to marker
+        const dx = mx - centerX, dz = mz - centerZ;
+        const len = Math.hypot(dx, dz);
+        if (len > 14) {
+          const ux = dx / len, uz = dz / len;
+          const ax = centerX + ux * 14, az = centerZ + uz * 14;
+          const bx = centerX + ux * (len - 10), bz = centerZ + uz * (len - 10);
+          ctx.strokeStyle = 'rgba(255,211,77,0.85)';
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(ax, az); ctx.lineTo(bx, bz); ctx.stroke();
+          ctx.fillStyle = '#ffd34d';
+          ctx.beginPath();
+          ctx.moveTo(bx + ux * 6, bz + uz * 6);
+          ctx.lineTo(bx - uz * 4, bz + ux * 4);
+          ctx.lineTo(bx + uz * 4, bz - ux * 4);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+
+    // Traffic cars (grey dots), police (blue squares), helicopters (blue rings)
     for (const c of state.cars) {
       if (c.dead) continue;
-      const [x, z] = toMap(c.pos.x, c.pos.z);
-      ctx.fillStyle = c.kind === 'police' ? '#4da3ff' : 'rgba(200,200,200,0.8)';
-      ctx.fillRect(x - 2, z - 2, 4, 4);
+      const [x, z] = worldToMap(c.pos.x, c.pos.z);
+      if (this.inMapView(x, z, S)) {
+        ctx.fillStyle = c.kind === 'police' ? '#4da3ff' : 'rgba(200,200,200,0.8)';
+        const size = c.kind === 'police' ? 4 : 3;
+        ctx.fillRect(x - size / 2, z - size / 2, size, size);
+      }
     }
-    // Taxi fare — an amber circle with a $ in it, at the passenger
-    // while offered, at the destination while riding. Drawn after the
-    // traffic so a car dot never hides it. Collectible packages are
-    // deliberately NOT on the map: finding them is the game.
-    if (state.fare) {
-      const [fx, fz] = toMap(state.fare.x, state.fare.z);
-      const pulse = 5 + Math.sin(performance.now() / 200) * 1.5;
-      ctx.fillStyle = '#f2a007';
-      ctx.beginPath(); ctx.arc(fx, fz, pulse, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#1d2733';
-      ctx.font = 'bold 9px Arial, sans-serif';
-      ctx.fillText('$', fx - 2.5, fz + 3);
-    }
-    // Police helicopter: a blue ring with a dot, so it reads at a glance.
+
+    // Police helicopter
     if (state.heliPos) {
-      const [x, z] = toMap(state.heliPos.x, state.heliPos.z);
-      ctx.strokeStyle = '#4da3ff';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, z, 6, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#4da3ff';
-      ctx.beginPath(); ctx.arc(x, z, 2, 0, Math.PI * 2); ctx.fill();
+      const [x, z] = worldToMap(state.heliPos.x, state.heliPos.z);
+      if (this.inMapView(x, z, S)) {
+        ctx.strokeStyle = '#4da3ff';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, z, 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#4da3ff';
+        ctx.beginPath(); ctx.arc(x, z, 3, 0, Math.PI * 2); ctx.fill();
+      }
     }
-    // Player arrow (rotates with heading).
-    const [px, pz] = toMap(state.player.x, state.player.z);
+
+    // Taxi fare (amber pulsing circle with $)
+    if (state.fare) {
+      const [fx, fz] = worldToMap(state.fare.x, state.fare.z);
+      if (this.inMapView(fx, fz, S)) {
+        const pulse = 6 + Math.sin(performance.now() / 200) * 2;
+        ctx.fillStyle = '#f2a007';
+        ctx.beginPath(); ctx.arc(fx, fz, pulse, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0c121a';
+        ctx.font = 'bold 10px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', fx, fz + 1);
+      }
+    }
+
+    // Player arrow (always at center, pointing up)
     ctx.save();
-    ctx.translate(px, pz);
-    ctx.rotate(Math.atan2(Math.sin(state.player.heading), -Math.cos(state.player.heading)));
+    ctx.translate(centerX, centerZ);
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(0, -7); ctx.lineTo(5, 6); ctx.lineTo(-5, 6); ctx.closePath();
+    ctx.moveTo(0, -9);
+    ctx.lineTo(6, 6);
+    ctx.lineTo(-6, 6);
+    ctx.closePath();
     ctx.fill();
+    // White outline
+    ctx.strokeStyle = '#0c121a';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     ctx.restore();
+
+    // North indicator (top-right, rotates opposite to player)
+    const northAngle = -pHeading;
+    ctx.save();
+    ctx.translate(S - 18, 18);
+    ctx.rotate(northAngle);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = 'bold 11px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', 0, 0);
+    ctx.restore();
+
+    // Map border
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, S - 2, S - 2);
+  }
+
+  inMapView(x, z, S, margin = 10) {
+    return x >= -margin && x <= S + margin && z >= -margin && z <= S + margin;
   }
 }

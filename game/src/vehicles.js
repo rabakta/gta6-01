@@ -335,6 +335,17 @@ export function makeCarMesh(defKey, colorHex) {
   ts.position.set(0, 0.6, -lightZ - 0.15);
   ts.scale.setScalar(1.6);
   g.add(ts);
+  // Dynamic SpotLights for real headlight illumination (controlled by Game).
+  const spotLeft = new THREE.SpotLight(0xffe9a8, 0, 30, Math.PI / 6, 0.3, 0.5);
+  spotLeft.position.set(-0.6, 0.7, lightZ + 0.1);
+  spotLeft.target.position.set(-0.6, 0, lightZ + 20);
+  spotLeft.castShadow = false; // Only player car casts shadows for performance
+  const spotRight = new THREE.SpotLight(0xffe9a8, 0, 30, Math.PI / 6, 0.3, 0.5);
+  spotRight.position.set(0.6, 0.7, lightZ + 0.1);
+  spotRight.target.position.set(0.6, 0, lightZ + 20);
+  spotRight.castShadow = false;
+  g.add(spotLeft, spotLeft.target, spotRight, spotRight.target);
+  g.userData.headlightSpots = [spotLeft, spotRight];
   if (defKey === 'police') {
     // Light bar: blue left, red right. The manager flashes them by
     // swapping the two materials' colours each half-second; the meshes are
@@ -463,6 +474,20 @@ export class Car {
     // times the car lean — so a weaving Moto reads as a bike, not a car.
     const lean = this.defKey === 'moto' ? 0.35 : 0.05;
     this.mesh.rotation.z = -this.steer * clamp(Math.abs(this.speed) / 20, 0, 1) * lean;
+  }
+
+  // Update dynamic headlight SpotLights: position, target, and intensity.
+  // Called by Game.update with the current time-of-day (0..1) and whether
+  // this car is the player's driven car (for shadow casting).
+  updateHeadlights(tod, isPlayerCar = false) {
+    const spots = this.mesh.userData.headlightSpots;
+    if (!spots) return;
+    const night = tod > 0.75 || tod < 0.25;
+    const intensity = night ? (isPlayerCar ? 2.5 : 1.2) : 0;
+    for (const s of spots) {
+      s.intensity = intensity;
+      if (isPlayerCar) s.castShadow = night;
+    }
   }
 
   damage(amount) {

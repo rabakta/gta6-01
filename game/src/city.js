@@ -36,7 +36,15 @@ function facadeMaterial(base, seed, floors, cols) {
   let m = facadeCache.get(key);
   if (!m) {
     const t = facadeTexture(base, seed, floors, cols);
-    m = new THREE.MeshLambertMaterial({ map: t.map, emissive: 0xffb45e, emissiveIntensity: 0.85, emissiveMap: t.emissiveMap });
+    m = new THREE.MeshStandardMaterial({ 
+      map: t.map, 
+      roughnessMap: t.roughnessMap,
+      metalnessMap: t.metalnessMap,
+      normalMap: t.normalMap,
+      emissive: 0xffb45e, 
+      emissiveIntensity: 0.85, 
+      emissiveMap: t.emissiveMap 
+    });
     facadeCache.set(key, m);
   }
   return m;
@@ -84,6 +92,13 @@ export function buildCity(scene) {
     // Bus stops and vendor stalls, built below from config.
     busStops: [],
     vendorSpots: [],
+    // Time-of-day references
+    sun: null,
+    skyMaterial: null,
+    hemiLight: null,
+    sunDisc: null,
+    sunGlow: null,
+    seaMaterial: null,
     // How much of the new graphics actually got built (logic tests).
     v5counts,
   };
@@ -118,7 +133,11 @@ export function buildCity(scene) {
   sun.shadow.camera.bottom = -260;
   sun.shadow.camera.far = 700;
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.7));
+  world.sun = sun;
+  const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 0.7);
+  scene.add(hemi);
+  world.hemiLight = hemi;
+  world.skyMaterial = skyMat;
 
   // The sun itself, low in the west, with a halo that bleeds into the
   // haze. The disc sits on the sky dome so it reads in every wide shot.
@@ -138,6 +157,8 @@ export function buildCity(scene) {
   sunGlow.position.copy(sunDir).multiplyScalar(820);
   sunGlow.scale.setScalar(260);
   scene.add(sunGlow);
+  world.sunDisc = sunDisc;
+  world.sunGlow = sunGlow;
 
   // Low warm clouds, so the sky has depth instead of a flat gradient.
   // A fresh seeded stream — the shared rng is untouched, the city layout
@@ -156,9 +177,16 @@ export function buildCity(scene) {
   }
 
   // Ground slab + sand beyond the beach.
+  const pavementTex = pavementTexture();
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.half * 2 + 40, CITY.half * 2 + 40),
-    new THREE.MeshLambertMaterial({ map: pavementTexture(), color: 0xbfb49e }),
+    new THREE.MeshStandardMaterial({ 
+      map: pavementTex.map, 
+      roughnessMap: pavementTex.roughnessMap,
+      metalnessMap: pavementTex.metalnessMap,
+      normalMap: pavementTex.normalMap,
+      color: 0xbfb49e 
+    }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
@@ -167,15 +195,21 @@ export function buildCity(scene) {
   // Dark outer apron under everything, so no void shows past the city edge.
   const apron = new THREE.Mesh(
     new THREE.PlaneGeometry(2400, 2400),
-    new THREE.MeshLambertMaterial({ color: 0x3d3226 }),
+    new THREE.MeshStandardMaterial({ color: 0x3d3226, roughness: 0.9 }),
   );
   apron.rotation.x = -Math.PI / 2;
   apron.position.y = -0.05;
   scene.add(apron);
 
+  const sandTex = sandTexture();
   const sand = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.beachEnd - CITY.half + 120, CITY.half * 2 + 40),
-    new THREE.MeshLambertMaterial({ map: sandTexture() }),
+    new THREE.MeshStandardMaterial({ 
+      map: sandTex.map, 
+      roughnessMap: sandTex.roughnessMap,
+      metalnessMap: sandTex.metalnessMap,
+      normalMap: sandTex.normalMap
+    }),
   );
   sand.rotation.x = -Math.PI / 2;
   sand.position.set((CITY.half + CITY.beachEnd + 120) / 2 - 20, 0.05, 0);
@@ -183,9 +217,15 @@ export function buildCity(scene) {
   scene.add(sand);
 
   // A wet-sand band along the waterline, darker than the dry beach.
+  const wetSandTex = wetSandTexture();
   const wetSand = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.beachEnd - CITY.half, CITY.half * 2 + 40),
-    new THREE.MeshLambertMaterial({ map: wetSandTexture() }),
+    new THREE.MeshStandardMaterial({ 
+      map: wetSandTex.map, 
+      roughnessMap: wetSandTex.roughnessMap,
+      metalnessMap: wetSandTex.metalnessMap,
+      normalMap: wetSandTex.normalMap
+    }),
   );
   wetSand.rotation.x = -Math.PI / 2;
   wetSand.position.set((CITY.half + CITY.beachEnd) / 2, 0.06, 0);
@@ -208,7 +248,13 @@ export function buildCity(scene) {
   world.seaMaterial = seaMat;
 
   // Roads: dark strips along every grid line, both directions.
-  const roadMat = new THREE.MeshLambertMaterial({ map: roadTexture() });
+  const roadTex = roadTexture();
+  const roadMat = new THREE.MeshStandardMaterial({ 
+    map: roadTex.map, 
+    roughnessMap: roadTex.roughnessMap,
+    metalnessMap: roadTex.metalnessMap,
+    normalMap: roadTex.normalMap
+  });
   const roadLen = CITY.half * 2 + 20;
   for (const l of roadLines()) {
     const vRoad = new THREE.Mesh(new THREE.PlaneGeometry(CITY.roadWidth, roadLen), roadMat);
@@ -226,7 +272,13 @@ export function buildCity(scene) {
   // Kerb strips along every road edge, so the asphalt ends in a kerb
   // instead of melting into the pavement. The two axes sit at different
   // heights (0.09 / 0.095) so they never z-fight where they cross.
-  const kerbMat = new THREE.MeshLambertMaterial({ map: kerbTexture() });
+  const kerbTex = kerbTexture();
+  const kerbMat = new THREE.MeshStandardMaterial({ 
+    map: kerbTex.map, 
+    roughnessMap: kerbTex.roughnessMap,
+    metalnessMap: kerbTex.metalnessMap,
+    normalMap: kerbTex.normalMap
+  });
   const kerbGeoZ = new THREE.PlaneGeometry(1.2, roadLen);
   const kerbGeoX = new THREE.PlaneGeometry(roadLen, 1.2);
   for (const l of roadLines()) {
@@ -251,8 +303,20 @@ export function buildCity(scene) {
   // A zebra crossing on every intersection, plaza tiles on the four
   // central ones instead. One shared geometry and material each.
   const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
-  const crossMat = new THREE.MeshLambertMaterial({ map: crosswalkTexture() });
-  const plazaMat = new THREE.MeshLambertMaterial({ map: plazaTexture() });
+  const crossTex = crosswalkTexture();
+  const crossMat = new THREE.MeshStandardMaterial({ 
+    map: crossTex.map, 
+    roughnessMap: crossTex.roughnessMap,
+    metalnessMap: crossTex.metalnessMap,
+    normalMap: crossTex.normalMap
+  });
+  const plazaTex = plazaTexture();
+  const plazaMat = new THREE.MeshStandardMaterial({ 
+    map: plazaTex.map, 
+    roughnessMap: plazaTex.roughnessMap,
+    metalnessMap: plazaTex.metalnessMap,
+    normalMap: plazaTex.normalMap
+  });
   const plazaGeo = new THREE.PlaneGeometry(16, 16);
   const lines = roadLines();
   lines.forEach((lx, ix) => {
@@ -281,8 +345,16 @@ export function buildCity(scene) {
 
   // Buildings: one block per grid cell, 1-3 towers each, pastel facades.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-  const roofMats = ROOF_COLS.map((c) => new THREE.MeshLambertMaterial({ map: roofTexture(c) }));
-  const parapetMat = new THREE.MeshLambertMaterial({ color: 0x4a3f35 });
+  const roofMats = ROOF_COLS.map((c) => {
+    const rt = roofTexture(c);
+    return new THREE.MeshStandardMaterial({ 
+      map: rt.map, 
+      roughnessMap: rt.roughnessMap,
+      metalnessMap: rt.metalnessMap,
+      normalMap: rt.normalMap
+    });
+  });
+  const parapetMat = new THREE.MeshStandardMaterial({ color: 0x4a3f35, roughness: 0.8 });
   const roofUsed = new Set();
   for (let ix = 0; ix < CITY.blocks - 1; ix++) {
     for (let iz = 0; iz < CITY.blocks - 1; iz++) {
@@ -376,20 +448,21 @@ export function buildCity(scene) {
 
   // The bridge at the beach edge: a raised deck on pillars, the getaway
   // route of mission 6. Visual only — the timed step ends at its foot.
-  const deckMat = new THREE.MeshLambertMaterial({ color: 0x3a3f46 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.7 });
   const deck = new THREE.Mesh(new THREE.BoxGeometry(110, 1.2, 16), deckMat);
   deck.position.set(265, 2.2, 0);
   deck.castShadow = true;
   scene.add(deck);
-  const railMat = new THREE.MeshLambertMaterial({ color: 0xd9a441 });
+  const railMat = new THREE.MeshStandardMaterial({ color: 0xd9a441, roughness: 0.5, metalness: 0.3 });
   for (const rz of [-7.5, 7.5]) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(110, 1, 0.5), railMat);
     rail.position.set(265, 3.4, rz);
     scene.add(rail);
   }
   const pillarGeo = new THREE.CylinderGeometry(1.2, 1.2, 2.4, 8);
+  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.7 });
   for (const px of [235, 265, 295]) {
-    const pillar = new THREE.Mesh(pillarGeo, deckMat);
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
     pillar.position.set(px, 1.1, 0);
     scene.add(pillar);
     colliders.push({ minX: px - 1.3, maxX: px + 1.3, minZ: -1.3, maxZ: 1.3 });
@@ -397,7 +470,7 @@ export function buildCity(scene) {
 
   // The pier — a wooden walkway out into the sea at the south beach,
   // with posts and a lamp at the far end. Cars stop at its foot.
-  const pierMat = new THREE.MeshLambertMaterial({ color: 0x8a6b46 });
+  const pierMat = new THREE.MeshStandardMaterial({ color: 0x8a6b46, roughness: 0.85 });
   const pierDeck = new THREE.Mesh(new THREE.BoxGeometry(44, 0.8, 6), pierMat);
   pierDeck.position.set(274, 1.4, -40);
   pierDeck.castShadow = true;
@@ -405,7 +478,7 @@ export function buildCity(scene) {
   const pierPostGeo = new THREE.CylinderGeometry(0.4, 0.4, 2.8, 6);
   for (const px of [256, 268, 280, 292]) {
     for (const pz of [-42.5, -37.5]) {
-      const post = new THREE.Mesh(pierPostGeo, deckMat);
+      const post = new THREE.Mesh(pierPostGeo, pierMat);
       post.position.set(px, 0.7, pz);
       scene.add(post);
     }
@@ -422,14 +495,15 @@ export function buildCity(scene) {
   // a lamp room and a beam that sweeps the bay. The beam group is exposed
   // on `world` so the game loop can rotate it.
   const lh = new THREE.Group();
-  const lhWhite = new THREE.MeshLambertMaterial({ color: 0xf2ead8 });
-  const lhRed = new THREE.MeshLambertMaterial({ color: 0xc22e2e });
+  const lhWhite = new THREE.MeshStandardMaterial({ color: 0xf2ead8, roughness: 0.6 });
+  const lhRed = new THREE.MeshStandardMaterial({ color: 0xc22e2e, roughness: 0.7 });
+  const lhTopMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.5 });
   const lhBase = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4, 22, 12), lhWhite);
   lhBase.position.y = 11;
   lhBase.castShadow = true;
   const lhBand = new THREE.Mesh(new THREE.CylinderGeometry(3.45, 3.6, 4, 12), lhRed);
   lhBand.position.y = 14;
-  const lhTop = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 3.4, 10), new THREE.MeshLambertMaterial({ color: 0x2a2d33 }));
+  const lhTop = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 3.4, 10), lhTopMat);
   lhTop.position.y = 23.5;
   const lhLamp = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff2c0 }));
   lhLamp.position.y = 23.5;
@@ -555,7 +629,7 @@ export function buildCity(scene) {
   }
 
   // Street lamps: warm glow on every third lamp.
-  const poleMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.8 });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe6a8 });
   const poleGeo = new THREE.CylinderGeometry(0.12, 0.12, 6, 6);
   const lampGeo = new THREE.SphereGeometry(0.35, 8, 6);
@@ -611,7 +685,8 @@ export function buildCity(scene) {
     neon.position.set(x, 4.4, z);
     neon.rotation.y = Math.atan2(-x, -z);
     scene.add(neon);
-    const box = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0xd8c8a8 }));
+    const shopBoxMat = new THREE.MeshStandardMaterial({ color: 0xd8c8a8, roughness: 0.7 });
+    const box = new THREE.Mesh(boxGeo, shopBoxMat);
     box.scale.set(12, 5, 8);
     box.position.set(x, 2.5, z);
     box.castShadow = true;
@@ -620,9 +695,10 @@ export function buildCity(scene) {
     // and the halo all sit on that side of the box.
     const dirX = -x / Math.hypot(x, z);
     const dirZ = -z / Math.hypot(x, z);
+    const awningMat = new THREE.MeshStandardMaterial({ color: awningColors[shop.kind] || 0xc94f43, roughness: 0.6 });
     const awning = new THREE.Mesh(
       new THREE.BoxGeometry(10, 0.15, 3),
-      new THREE.MeshLambertMaterial({ color: awningColors[shop.kind] || 0xc94f43 }),
+      awningMat,
     );
     awning.rotation.order = 'YXZ';
     awning.rotation.y = Math.atan2(-x, -z);
@@ -705,12 +781,14 @@ export function buildCity(scene) {
     const stopPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 3.4, 6), deckMat);
     stopPole.position.set(stop.x + 9, 1.7, stop.z);
     scene.add(stopPole);
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 0.9), pierMat);
+    const benchMat = new THREE.MeshStandardMaterial({ color: 0x8a6b46, roughness: 0.8 });
+    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 0.9), benchMat);
     bench.position.set(stop.x + 9, 0.6, stop.z + 1.6);
     bench.castShadow = true;
     scene.add(bench);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x8a6b46, roughness: 0.8 });
     for (const bx of [-1.1, 1.1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.8), deckMat);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.6, 0.8), legMat);
       leg.position.set(stop.x + 9 + bx, 0.3, stop.z + 1.6);
       scene.add(leg);
     }
@@ -722,13 +800,16 @@ export function buildCity(scene) {
   // Vendor stalls — a counter, a bright striped canopy and a name
   // board. The stall itself is a small collider so cars cannot drive
   // through the flowers; the vendor ped stands behind it.
+  const vendorCounterMat = new THREE.MeshStandardMaterial({ color: 0x8a6b46, roughness: 0.8 });
+  const vendorCanopyMat = new THREE.MeshStandardMaterial({ color: 0x8a6b46, roughness: 0.7 }); // color overridden per vendor
   for (const v of VENDORS) {
-    const counter = new THREE.Mesh(boxGeo, new THREE.MeshLambertMaterial({ color: 0x8a6b46 }));
+    const counter = new THREE.Mesh(boxGeo, vendorCounterMat);
     counter.scale.set(3.2, 1.1, 1.6);
     counter.position.set(v.x, 0.55, v.z);
     counter.castShadow = true;
     scene.add(counter);
-    const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.18, 2.4), new THREE.MeshLambertMaterial({ color: v.color }));
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.18, 2.4), vendorCanopyMat.clone());
+    canopy.material.color.set(v.color);
     canopy.position.set(v.x, 2.6, v.z);
     canopy.castShadow = true;
     scene.add(canopy);

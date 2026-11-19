@@ -5,6 +5,11 @@
 import * as THREE from 'three';
 import { makeCanvas, mulberry32, pick } from './utils.js';
 
+// PBR texture caches
+const roughnessCache = new Map();
+const metalnessCache = new Map();
+const normalCache = new Map();
+
 // Wrap a painted canvas as a repeatable, colour-correct texture.
 function paintTexture(canvas, repeatX = 1, repeatY = 1) {
   const tex = new THREE.CanvasTexture(canvas);
@@ -13,6 +18,122 @@ function paintTexture(canvas, repeatX = 1, repeatY = 1) {
   tex.repeat.set(repeatX, repeatY);
   tex.anisotropy = 4;
   tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// Create a linear texture (for roughness/metalness - grayscale)
+function paintLinearTexture(canvas, repeatX = 1, repeatY = 1) {
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.anisotropy = 4;
+  tex.colorSpace = THREE.LinearSRGBColorSpace; // Linear for PBR data
+  return tex;
+}
+
+// Generate roughness map from base texture logic
+function generateRoughnessMap(baseRoughness, variation, seed, w = 256, h = 256) {
+  const key = `rough_${baseRoughness}_${variation}_${seed}_${w}_${h}`;
+  let tex = roughnessCache.get(key);
+  if (tex) return tex;
+  
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const rng = mulberry32(seed);
+  
+  // Base roughness
+  const baseVal = Math.round(baseRoughness * 255);
+  g.fillStyle = `rgb(${baseVal}, ${baseVal}, ${baseVal})`;
+  g.fillRect(0, 0, w, h);
+  
+  // Add variation noise
+  for (let i = 0; i < w * h * 0.1; i++) {
+    const x = rng() * w;
+    const y = rng() * h;
+    const v = Math.round((baseRoughness + (rng() - 0.5) * variation) * 255);
+    const clamped = Math.max(0, Math.min(255, v));
+    g.fillStyle = `rgb(${clamped}, ${clamped}, ${clamped})`;
+    g.fillRect(x, y, 2 + rng() * 4, 2 + rng() * 4);
+  }
+  
+  tex = paintLinearTexture(c);
+  roughnessCache.set(key, tex);
+  return tex;
+}
+
+// Generate metalness map (mostly 0 for non-metals, 1 for metals)
+function generateMetalnessMap(isMetal, seed, w = 256, h = 256) {
+  const key = `metal_${isMetal}_${seed}_${w}_${h}`;
+  let tex = metalnessCache.get(key);
+  if (tex) return tex;
+  
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const val = isMetal ? 255 : 0;
+  g.fillStyle = `rgb(${val}, ${val}, ${val})`;
+  g.fillRect(0, 0, w, h);
+  
+  // Add some edge wear for metals
+  if (isMetal) {
+    const rng = mulberry32(seed + 1000);
+    for (let i = 0; i < 200; i++) {
+      const x = rng() * w;
+      const y = rng() * h;
+      g.fillStyle = 'rgb(180, 180, 180)';
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  
+  tex = paintLinearTexture(c);
+  metalnessCache.set(key, tex);
+  return tex;
+}
+
+// Generate normal map from height data (optimized with caching and lower resolution)
+function generateNormalMap(heightFn, seed, w = 128, h = 128, strength = 1.0) {
+  const key = `normal_${seed}_${w}_${h}_${strength}`;
+  let tex = normalCache.get(key);
+  if (tex) return tex;
+  
+  const c = makeCanvas(w, h);
+  const g = c.getContext('2d');
+  const imgData = g.createImageData(w, h);
+  const data = imgData.data;
+  const rng = mulberry32(seed);
+  
+  // Sample height field at lower resolution for performance
+  const heights = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      heights[y * w + x] = heightFn(x * (256/w), y * (256/h), rng);
+    }
+  }
+  
+  // Compute normals via Sobel
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const hL = heights[y * w + Math.max(0, x - 1)];
+      const hR = heights[y * w + Math.min(w - 1, x + 1)];
+      const hU = heights[Math.max(0, y - 1) * w + x];
+      const hD = heights[Math.min(h - 1, y + 1) * w + x];
+      
+      const nx = (hL - hR) * strength;
+      const ny = (hU - hD) * strength;
+      const nz = 1.0;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      
+      const idx = (y * w + x) * 4;
+      data[idx] = Math.round((nx / len * 0.5 + 0.5) * 255);     // R = X
+      data[idx + 1] = Math.round((ny / len * 0.5 + 0.5) * 255); // G = Y
+      data[idx + 2] = Math.round((nz / len * 0.5 + 0.5) * 255); // B = Z
+      data[idx + 3] = 255;
+    }
+  }
+  
+  g.putImageData(imgData, 0, 0);
+  tex = paintLinearTexture(c);
+  normalCache.set(key, tex);
   return tex;
 }
 
@@ -31,6 +152,7 @@ function speckle(g, rng, w, h, count, light, dark) {
 // tower gets more rows instead of taller windows. Returns the colour map
 // and an emissive map (black except the lit windows), painted from the
 // same seeded stream so the glow lands on exactly the windows that are lit.
+// Also returns roughness, metalness, and normal maps for PBR.
 export function facadeTexture(base, seed, floors = 6, cols = 4) {
   const rows = Math.max(1, floors - 1);
   const rng = mulberry32(seed);
@@ -90,7 +212,39 @@ export function facadeTexture(base, seed, floors = 6, cols = 4) {
   g.fillRect(108, 196, 40, 60);
   g.fillStyle = 'rgba(255,217,138,0.85)';
   g.fillRect(112, 200, 32, 26);
-  return { map: paintTexture(c), emissiveMap: paintTexture(e) };
+
+  // PBR maps
+  const roughnessMap = generateRoughnessMap(0.85, 0.15, seed + 1);
+  const metalnessMap = generateMetalnessMap(false, seed + 2);
+  const normalMap = generateNormalMap((x, y, r) => {
+    // Stucco bumpiness
+    let h = 0;
+    h += Math.sin(x * 0.1) * Math.cos(y * 0.1) * 0.3;
+    h += (r() - 0.5) * 0.1;
+    // Window recesses
+    const colW = 256 / cols;
+    const rows = Math.max(1, floors - 1);
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const wx = Math.round(col * colW + colW * 0.16);
+        const wy = 14 + row * 26;
+        const ww = Math.round(colW * 0.68);
+        const hh = 20;
+        if (x > wx - 4 && x < wx + ww + 4 && y > wy - 4 && y < wy + hh + 4) {
+          h -= 0.2; // Recessed
+        }
+      }
+    }
+    return h;
+  }, seed + 3, 128, 128, 0.5);
+
+  return { 
+    map: paintTexture(c), 
+    emissiveMap: paintTexture(e),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // Asphalt with a dashed centre line and worn white edges.
@@ -106,7 +260,23 @@ export function roadTexture() {
   g.fillStyle = 'rgba(255,255,255,0.55)';
   g.fillRect(6, 0, 3, 128);
   g.fillRect(119, 0, 3, 128);
-  return paintTexture(c, 1, 4);
+
+  // PBR: rough asphalt, non-metal
+  const roughnessMap = generateRoughnessMap(0.9, 0.1, 7);
+  const metalnessMap = generateMetalnessMap(false, 8);
+  const normalMap = generateNormalMap((x, y, r) => {
+    let h = (r() - 0.5) * 0.15;
+    // Centre line bumps
+    if (x > 60 && x < 68) h += 0.1;
+    return h;
+  }, 9, 128, 128, 0.3);
+
+  return { 
+    map: paintTexture(c, 1, 4),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // Pavement slabs in a 4x4 grid.
@@ -128,7 +298,25 @@ export function pavementTexture() {
     g.lineTo(128, i * 32);
     g.stroke();
   }
-  return paintTexture(c, 6, 6);
+
+  // PBR: concrete slabs, slightly rough
+  const roughnessMap = generateRoughnessMap(0.75, 0.1, 10);
+  const metalnessMap = generateMetalnessMap(false, 11);
+  const normalMap = generateNormalMap((x, y, r) => {
+    let h = (r() - 0.5) * 0.05;
+    // Grout lines
+    const gx = x % 32;
+    const gy = y % 32;
+    if (gx < 2 || gx > 30 || gy < 2 || gy > 30) h -= 0.1;
+    return h;
+  }, 12, 128, 128, 0.2);
+
+  return { 
+    map: paintTexture(c, 6, 6),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // Beach sand with a few shells.
@@ -142,7 +330,21 @@ export function sandTexture() {
     g.fillStyle = rng() < 0.5 ? 'rgba(255,240,200,0.35)' : 'rgba(120,90,50,0.25)';
     g.fillRect(rng() * 128, rng() * 128, 2, 2);
   }
-  return paintTexture(c, 10, 10);
+
+  // PBR: sand is rough, non-metal
+  const roughnessMap = generateRoughnessMap(0.95, 0.05, 22);
+  const metalnessMap = generateMetalnessMap(false, 23);
+  const normalMap = generateNormalMap((x, y, r) => {
+    // Fine sand grain
+    return (r() - 0.5) * 0.08;
+  }, 24, 128, 128, 0.15);
+
+  return { 
+    map: paintTexture(c, 10, 10),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // A shop sign / billboard with big painted letters.
@@ -206,10 +408,24 @@ export function roofTexture(base) {
   grad.addColorStop(1, 'rgba(0,0,0,0.35)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
+
+  // PBR: roof tiles/membrane, slightly rough
+  const roughnessMap = generateRoughnessMap(0.7, 0.15, Math.abs(base) + 100);
+  const metalnessMap = generateMetalnessMap(false, Math.abs(base) + 200);
+  const normalMap = generateNormalMap((x, y, r) => {
+    // Subtle tile pattern
+    return Math.sin(x * 0.5) * Math.cos(y * 0.5) * 0.1 + (r() - 0.5) * 0.05;
+  }, Math.abs(base) + 300, 64, 64, 0.2);
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
-  return tex;
+  return { 
+    map: tex,
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +513,27 @@ export function crosswalkTexture() {
   for (let i = 0; i < 5; i++) {
     g.fillRect(8 + i * 24, 10, 14, 108);
   }
-  return paintTexture(c);
+
+  // PBR: painted lines on asphalt
+  const roughnessMap = generateRoughnessMap(0.85, 0.1, 13);
+  const metalnessMap = generateMetalnessMap(false, 14);
+  const normalMap = generateNormalMap((x, y, r) => {
+    let h = (r() - 0.5) * 0.1;
+    // White stripes slightly raised
+    const stripe = Math.floor((x - 8) / 24);
+    if (stripe >= 0 && stripe < 5) {
+      const stripeX = 8 + stripe * 24;
+      if (x > stripeX && x < stripeX + 14) h += 0.05;
+    }
+    return h;
+  }, 15, 128, 128, 0.15);
+
+  return { 
+    map: paintTexture(c),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // Plaza tiles: a pastel checkerboard for the four central intersections.
@@ -323,7 +559,25 @@ export function plazaTexture() {
     g.lineTo(128, i * 32);
     g.stroke();
   }
-  return paintTexture(c, 2, 2);
+
+  // PBR: stone tiles
+  const roughnessMap = generateRoughnessMap(0.65, 0.1, 16);
+  const metalnessMap = generateMetalnessMap(false, 17);
+  const normalMap = generateNormalMap((x, y, r) => {
+    let h = (r() - 0.5) * 0.05;
+    // Grout lines
+    const gx = x % 32;
+    const gy = y % 32;
+    if (gx < 2 || gx > 30 || gy < 2 || gy > 30) h -= 0.1;
+    return h;
+  }, 18, 128, 128, 0.2);
+
+  return { 
+    map: paintTexture(c, 2, 2),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // Kerb: pale concrete with a dark road-side edge and a pale top line.
@@ -337,7 +591,25 @@ export function kerbTexture() {
   g.fillRect(0, 26, 128, 6);
   g.fillStyle = 'rgba(255,255,255,0.25)';
   g.fillRect(0, 0, 128, 3);
-  return paintTexture(c, 8, 1);
+
+  // PBR: concrete curb
+  const roughnessMap = generateRoughnessMap(0.7, 0.1, 19);
+  const metalnessMap = generateMetalnessMap(false, 20);
+  const normalMap = generateNormalMap((x, y, r) => {
+    let h = (r() - 0.5) * 0.05;
+    // Top edge
+    if (y < 3) h += 0.1;
+    // Road side edge
+    if (y > 26 && y < 32) h -= 0.1;
+    return h;
+  }, 21, 128, 32, 0.2);
+
+  return { 
+    map: paintTexture(c, 8, 1),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
 
 // Wet sand: darker and denser than the dry beach, for the waterline band.
@@ -351,5 +623,19 @@ export function wetSandTexture() {
     g.fillStyle = rng() < 0.5 ? 'rgba(255,230,180,0.25)' : 'rgba(90,60,30,0.22)';
     g.fillRect(rng() * 128, rng() * 128, 2, 2);
   }
-  return paintTexture(c, 8, 4);
+
+  // PBR: wet sand - smoother, more reflective when wet
+  const roughnessMap = generateRoughnessMap(0.6, 0.15, 25);
+  const metalnessMap = generateMetalnessMap(false, 26);
+  const normalMap = generateNormalMap((x, y, r) => {
+    // Smoother than dry sand, subtle ripples
+    return Math.sin(x * 0.1) * Math.cos(y * 0.08) * 0.05 + (r() - 0.5) * 0.03;
+  }, 27, 128, 128, 0.1);
+
+  return { 
+    map: paintTexture(c, 8, 4),
+    roughnessMap,
+    metalnessMap,
+    normalMap
+  };
 }
