@@ -44,7 +44,7 @@ class Game {
 
     this.particles = new ParticleSystem(this.scene);
     this.audio = new AudioEngine();
-    this.hud = new HUD(this.world);
+    this.hud = new HUD(this.world, this);
     this.save = loadSave() || defaultSave();
     if (!this.save.upgrades) this.save.upgrades = { armor: 0, engine: 0, tires: 0 };
     if (!this.save.packages) this.save.packages = [];

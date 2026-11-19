@@ -84,8 +84,9 @@ export function weaponSlotList(weapons, current) {
 }
 
 export class HUD {
-  constructor(world) {
+  constructor(world, game) {
     this.world = world;
+    this.game = game;
     this.el = {};
     for (const id of HUD_IDS) this.el[id] = document.getElementById(id);
     this.map = document.getElementById('minimap');
@@ -647,5 +648,128 @@ export class HUD {
 
   inMapView(x, z, S, margin = 10) {
     return x >= -margin && x <= S + margin && z >= -margin && z <= S + margin;
+  }
+
+  // Weapon wheel: radial selector (hold Tab/weapon button)
+  buildWeaponWheel() {
+    const el = document.createElement('div');
+    el.id = 'weapon-wheel';
+    el.innerHTML = `
+      <div class="wheel-bg"></div>
+      <div class="wheel-center"><span class="current-weapon">FISTS</span></div>
+    `;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  showWeaponWheel(save) {
+    if (!this.weaponWheelEl) return;
+    const slots = weaponSlotList(save.weapons, save.currentWeapon || 'fists');
+    const WEAPON_ICONS = { fists: '✊', pistol: '🔫', smg: '🔫', shotgun: '🔫' };
+    const centerAngle = -Math.PI / 2;
+    const slotCount = slots.length;
+    let html = '<div class="wheel-bg"></div><div class="wheel-center"><span class="current-weapon">' + (save.currentWeapon || 'fists').toUpperCase() + '</span></div>';
+    for (let i = 0; i < slotCount; i++) {
+      const s = slots[i];
+      const angle = centerAngle + (i / slotCount) * Math.PI * 2;
+      const radius = 100;
+      const x = Math.cos(angle) * radius + 160 - 40;
+      const y = Math.sin(angle) * radius + 160 - 40;
+      html += `<div class="wheel-slot${s.on ? ' selected' : ''}" data-weapon="${s.key}" style="left:${x}px;top:${y}px"><span class="icon">${WEAPON_ICONS[s.key] || '❓'}</span><span class="label">${s.label}</span><span class="hotkey">${s.hotkey}</span></div>`;
+    }
+    this.weaponWheelEl.innerHTML = html;
+    this.weaponWheelEl.classList.add('active');
+    // Click handlers
+    this.weaponWheelEl.querySelectorAll('.wheel-slot').forEach(slot => {
+      slot.addEventListener('click', () => {
+        const w = slot.dataset.weapon;
+        if (save.weapons[w]) {
+          save.currentWeapon = w;
+          this.game.notify(WEAPONS[w].name + ' equipped.');
+        }
+        this.hideWeaponWheel();
+      });
+    });
+  }
+
+  hideWeaponWheel() {
+    if (this.weaponWheelEl) this.weaponWheelEl.classList.remove('active');
+  }
+
+  // Phone pause menu: iPhone-style app grid
+  buildPhoneMenu() {
+    const el = document.createElement('div');
+    el.id = 'phone-menu';
+    el.innerHTML = `
+      <div class="phone-header">
+        <span class="phone-time">${this.formatPhoneTime()}</span>
+        <span class="phone-battery">🔋 100%</span>
+      </div>
+      <div class="phone-apps">
+        <button class="phone-app" data-app="map"><span class="icon">🗺️</span><span class="name">MAP</span><span class="desc">City map & GPS</span></button>
+        <button class="phone-app" data-app="missions"><span class="icon">📋</span><span class="name">MISSIONS</span><span class="desc">Active & completed</span></button>
+        <button class="phone-app" data-app="garage"><span class="icon">🚗</span><span class="name">GARAGE</span><span class="desc">Vehicles & upgrades</span></button>
+        <button class="phone-app" data-app="radio"><span class="icon">📻</span><span class="name">RADIO</span><span class="desc">Stations & volume</span></button>
+        <button class="phone-app" data-app="stats"><span class="icon">📊</span><span class="name">STATS</span><span class="desc">Progress & achievements</span></button>
+        <button class="phone-app" data-app="settings"><span class="icon">⚙️</span><span class="name">SETTINGS</span><span class="desc">Game options</span></button>
+        <button class="phone-app" data-app="contacts"><span class="icon">📞</span><span class="name">CONTACTS</span><span class="desc">Phone numbers</span></button>
+        <button class="phone-app" data-app="camera"><span class="icon">📸</span><span class="name">CAMERA</span><span class="desc">Photo mode</span></button>
+        <button class="phone-app" data-app="browser"><span class="icon">🌐</span><span class="name">BROWSER</span><span class="desc">In-game web</span></button>
+      </div>
+      <div class="phone-footer">
+        <span>Brisa Bay</span>
+        <span>${this.formatPhoneTime()}</span>
+      </div>
+      <div class="phone-detail" id="phone-detail"></div>
+    `;
+    document.body.appendChild(el);
+    // App click handlers
+    el.querySelectorAll('.phone-app').forEach(btn => {
+      btn.addEventListener('click', () => this.openPhoneApp(btn.dataset.app));
+    });
+    return el;
+  }
+
+  formatPhoneTime() {
+    const now = new Date();
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  openPhoneApp(app) {
+    const detail = this.phoneMenuEl.querySelector('#phone-detail');
+    const apps = {
+      map: { title: 'MAP', content: '<p>City map with GPS tracking. Tap to set waypoint.</p>' },
+      missions: { title: 'MISSIONS', content: '<p>Mission list and progress.</p>' },
+      garage: { title: 'GARAGE', content: '<p>Your vehicles and upgrades.</p>' },
+      radio: { title: 'RADIO', content: '<p>Station selector and volume.</p>' },
+      stats: { title: 'STATS', content: '<p>Progress, collectibles, fares.</p>' },
+      settings: { title: 'SETTINGS', content: '<p>Audio, graphics, controls.</p>' },
+      contacts: { title: 'CONTACTS', content: '<p>Saved phone numbers.</p>' },
+      camera: { title: 'CAMERA', content: '<p>Photo mode with filters.</p>' },
+      browser: { title: 'BROWSER', content: '<p>In-game web browser.</p>' }
+    };
+    const a = apps[app] || { title: app.toUpperCase(), content: '<p>Coming soon.</p>' };
+    detail.innerHTML = `<button class="back-btn">← Back</button><h2>${a.title}</h2>${a.content}`;
+    detail.classList.add('active');
+    detail.querySelector('.back-btn').addEventListener('click', () => this.closePhoneDetail());
+  }
+
+  closePhoneDetail() {
+    const detail = this.phoneMenuEl.querySelector('#phone-detail');
+    detail.classList.remove('active');
+  }
+
+  showPhoneMenu(save) {
+    if (this.phoneMenuEl) {
+      this.phoneMenuEl.querySelector('.phone-time').textContent = this.formatPhoneTime();
+      this.phoneMenuEl.classList.add('active');
+    }
+  }
+
+  hidePhoneMenu() {
+    if (this.phoneMenuEl) {
+      this.phoneMenuEl.classList.remove('active');
+      this.closePhoneDetail();
+    }
   }
 }
