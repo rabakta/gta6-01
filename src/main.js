@@ -22,11 +22,11 @@ import { glowTexture } from './textures.js';
 
 class Game {
   constructor() {
-    this.renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game'), antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('game'), antialias: false }); // disable AA for perf
     this.renderer.setSize(innerWidth, innerHeight);
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.2)); // cap pixel ratio
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap; // faster than PCFSoftShadowMap
     // Filmic tone mapping + sRGB, so the sunset grades like a photo.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
@@ -85,17 +85,17 @@ class Game {
     this.headlightLeft.position.set(-1.2, 0.8, 0);
     this.headlightLeft.target.position.set(-1.2, 0, 20);
     this.headlightLeft.castShadow = true;
-    this.headlightLeft.shadow.mapSize.set(512, 512);
+    this.headlightLeft.shadow.mapSize.set(256, 256); // reduced from 512
     this.headlightLeft.shadow.camera.near = 1;
-    this.headlightLeft.shadow.camera.far = 40;
+    this.headlightLeft.shadow.camera.far = 35;
     this.headlightLeft.shadow.camera.fov = 50;
     this.headlightRight = new THREE.SpotLight(0xffe9a8, 0, 35, Math.PI / 6, 0.3, 0.5);
     this.headlightRight.position.set(1.2, 0.8, 0);
     this.headlightRight.target.position.set(1.2, 0, 20);
     this.headlightRight.castShadow = true;
-    this.headlightRight.shadow.mapSize.set(512, 512);
+    this.headlightRight.shadow.mapSize.set(256, 256); // reduced from 512
     this.headlightRight.shadow.camera.near = 1;
-    this.headlightRight.shadow.camera.far = 40;
+    this.headlightRight.shadow.camera.far = 35;
     this.headlightRight.shadow.camera.fov = 50;
     this.headlightPool.add(this.headlightLeft, this.headlightLeft.target, this.headlightRight, this.headlightRight.target);
     this.headlightPool.visible = false;
@@ -132,8 +132,8 @@ class Game {
     this.sunDisc = null;
     this.sunGlow = null;
 
-    this.traffic.spawn(28, { x: -140, z: 140 }, 200);
-    this.peds.spawn(48, { x: -140, z: 140 }, 180);
+    this.traffic.spawn(16, { x: -140, z: 140 }, 200); // reduced from 28
+    this.peds.spawn(28, { x: -140, z: 140 }, 180); // reduced from 48
     // A few parked cars near the start so the first minute has wheels.
     this.spawnParked('brisa', 0xc94f43, -120, 120, Math.PI / 2);
     this.spawnParked('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
@@ -1018,8 +1018,8 @@ class Game {
       : this.nearCar ? 'E — Steal the ' + this.nearCar.def.label : null;
 
     // Keep the city populated around the player.
-    if (this.traffic.cars.filter((c) => !c.dead).length < 18) this.traffic.spawn(6, p.pos, 150);
-    if (this.peds.peds.filter((x) => !x.dead).length < 32) this.peds.spawn(10, p.pos, 130);
+    if (this.traffic.cars.filter((c) => !c.dead).length < 12) this.traffic.spawn(4, p.pos, 150); // reduced from 18/6
+    if (this.peds.peds.filter((x) => !x.dead).length < 20) this.peds.spawn(6, p.pos, 130); // reduced from 32/10
     // Keep the bus stops staffed — when the waiters thin out, send
     // two more to a random stop. A stop with no waiters is just a bench.
     if (this.peds.waiters().length < 6) {
