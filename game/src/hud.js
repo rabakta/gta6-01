@@ -772,4 +772,113 @@ export class HUD {
       this.closePhoneDetail();
     }
   }
+
+  // Race HUD: shows during race_mode
+  showRaceHUD(track, missionManager) {
+    this.raceHUD = document.createElement('div');
+    this.raceHUD.id = 'race-hud';
+    this.raceHUD.style.cssText = `
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      width: 400px; background: rgba(10,16,24,0.92); border: 2px solid #4a6fa5;
+      border-radius: 12px; padding: 16px; color: #fff; font-family: Arial, sans-serif;
+      z-index: 15; box-shadow: 0 0 30px rgba(0,0,0,0.8);
+    `;
+    this.raceHUD.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid rgba(74,111,165,0.3);padding-bottom:8px">
+        <div>
+          <div style="font-size:18px;font-weight:900;color:#ffd34d">${track.name}</div>
+          <div style="font-size:11px;color:#8aa8c8">${track.type.toUpperCase()} • ${track.laps} LAP${track.laps > 1 ? 'S' : ''}</div>
+        </div>
+        <div style="text-align:right">
+          <div id="race-timer" style="font-size:22px;font-weight:900;color:#ffd34d;font-family:monospace">--:--</div>
+          <div id="race-position" style="font-size:12px;color:#bcd6ea">POS: 1/${(track.aiRacers || 4) + 1}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px">
+        <div><span style="color:#8aa8c8">LAP</span><br><span id="race-lap" style="font-weight:900;color:#fff">1/${track.laps}</span></div>
+        <div><span style="color:#8aa8c8">CHECKPOINT</span><br><span id="race-cp" style="font-weight:900;color:#fff">1/${track.checkpoints.length}</span></div>
+        <div><span style="color:#8aa8c8">BEST</span><br><span id="race-best" style="font-weight:900;color:#fff">--:--</span></div>
+      </div>
+      <div id="race-delta" style="margin-top:8px;font-size:12px;color:#bcd6ea;text-align:center"></div>
+    `;
+    document.body.appendChild(this.raceHUD);
+    this.raceTrack = track;
+    this.raceManager = missionManager;
+    this.raceBestLap = null;
+    this.raceLapStart = performance.now();
+  }
+
+  updateRaceHUD(missionManager) {
+    if (!this.raceHUD || !this.raceTrack) return;
+    const track = this.raceTrack;
+    const mm = missionManager;
+
+    // Timer
+    const timerEl = this.raceHUD.querySelector('#race-timer');
+    const secs = Math.max(0, mm.timer);
+    const mins = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    timerEl.textContent = mins.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0');
+    timerEl.style.color = secs < 15 ? '#ff5a4d' : '#ffd34d';
+
+    // Lap
+    this.raceHUD.querySelector('#race-lap').textContent = (mm.raceLap || 1) + '/' + track.laps;
+
+    // Checkpoint
+    this.raceHUD.querySelector('#race-cp').textContent = (mm.raceIndex + 1) + '/' + track.checkpoints.length;
+
+    // Position
+    let pos = 1;
+    for (const r of mm.racers || []) {
+      if (r.raceLap > track.laps || (r.raceLap === track.laps && r.raceIndex >= track.checkpoints.length)) {
+        pos++;
+      }
+    }
+    this.raceHUD.querySelector('#race-position').textContent = 'POS: ' + pos + '/' + ((track.aiRacers || 4) + 1);
+
+    // Best lap
+    const now = performance.now();
+    if (mm.raceIndex === 0 && mm.raceLap > 1) {
+      const lapTime = (now - this.raceLapStart) / 1000;
+      if (!this.raceBestLap || lapTime < this.raceBestLap) this.raceBestLap = lapTime;
+      this.raceLapStart = now;
+    }
+    if (this.raceBestLap) {
+      const bm = Math.floor(this.raceBestLap / 60);
+      const bs = Math.floor(this.raceBestLap % 60);
+      this.raceHUD.querySelector('#race-best').textContent = bm.toString().padStart(2, '0') + ':' + bs.toString().padStart(2, '0');
+    }
+
+    // Delta to leader (simplified)
+    const deltaEl = this.raceHUD.querySelector('#race-delta');
+    if (mm.racers && mm.racers.length > 0) {
+      const leader = mm.racers.reduce((best, r) => {
+        const rProg = r.raceLap * track.checkpoints.length + r.raceIndex;
+        const bProg = best.raceLap * track.checkpoints.length + best.raceIndex;
+        return rProg > bProg ? r : best;
+      });
+      const playerProg = (mm.raceLap - 1) * track.checkpoints.length + mm.raceIndex;
+      const leaderProg = (leader.raceLap - 1) * track.checkpoints.length + leader.raceIndex;
+      const diff = leaderProg - playerProg;
+      if (diff > 0) {
+        deltaEl.textContent = '+' + diff + ' CP behind leader';
+        deltaEl.style.color = '#ff5a4d';
+      } else if (diff < 0) {
+        deltaEl.textContent = Math.abs(diff) + ' CP ahead';
+        deltaEl.style.color = '#00ff88';
+      } else {
+        deltaEl.textContent = 'SIDE BY SIDE';
+        deltaEl.style.color = '#ffd34d';
+      }
+    }
+  }
+
+  hideRaceHUD() {
+    if (this.raceHUD) {
+      this.raceHUD.remove();
+      this.raceHUD = null;
+      this.raceTrack = null;
+      this.raceManager = null;
+    }
+  }
 }

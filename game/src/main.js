@@ -1061,6 +1061,126 @@ class Game {
       document.title = 'BRISA BAY - ready';
     }
   }
+
+  // Race Map System: swap city for a dedicated race track
+  enterRaceMap(track) {
+    // Store current scene objects we need to preserve
+    this.raceScene = new THREE.Scene();
+    this.raceScene.background = this.scene.background;
+    this.raceScene.fog = this.scene.fog;
+
+    // Copy lights
+    this.sun = this.world.sun;
+    this.hemiLight = this.world.hemiLight;
+    this.raceScene.add(this.sun, this.sun.target, this.hemiLight);
+
+    // Build race track geometry (simple road mesh with checkpoints)
+    this.buildRaceTrack(track);
+
+    // Swap scenes
+    this.cityScene = this.scene;
+    this.scene = this.raceScene;
+    this.missions.raceMode = true;
+
+    // Reset traffic/police for race
+    this.traffic.cars.forEach(c => this.removeCar(c));
+    this.traffic.cars = [];
+    this.police.cars.forEach(c => this.removeCar(c));
+    this.police.cars = [];
+
+    this.notify('Race map loaded: ' + track.name);
+  }
+
+  buildRaceTrack(track) {
+    // Create a simple road path following checkpoints
+    const roadWidth = 14;
+    const points = track.checkpoints.map(cp => new THREE.Vector3(cp.x, 0.05, cp.z));
+    // Close the loop for circuit tracks
+    if (track.type === 'circuit') {
+      points.push(points[0].clone());
+    }
+
+    // Road mesh using a tube-like geometry
+    const curve = new THREE.CatmullRomCurve3(points, track.type === 'circuit');
+    const roadGeo = new THREE.TubeGeometry(curve, points.length * 8, roadWidth / 2, 8, track.type === 'circuit');
+    const roadMat = new THREE.MeshStandardMaterial({
+      color: 0x2b2e33,
+      roughness: 0.9,
+      metalness: 0.1,
+    });
+    const roadMesh = new THREE.Mesh(roadGeo, roadMat);
+    roadMesh.receiveShadow = true;
+    this.raceScene.add(roadMesh);
+
+    // Checkpoint markers
+    track.checkpoints.forEach((cp, i) => {
+      const ringGeo = new THREE.RingGeometry(cp.radius - 1, cp.radius, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: i === 0 ? 0x00ff88 : 0xffd34d,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(cp.x, 0.1, cp.z);
+      this.raceScene.add(ring);
+    });
+
+    // Start/finish line
+    const start = track.checkpoints[0];
+    const lineGeo = new THREE.PlaneGeometry(roadWidth + 2, 1);
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.rotation.x = -Math.PI / 2;
+    line.position.set(start.x, 0.12, start.z);
+    this.raceScene.add(line);
+
+    // Drift zones (for drift track)
+    if (track.driftZones) {
+      track.driftZones.forEach(dz => {
+        const zoneGeo = new THREE.RingGeometry(dz.radius - 5, dz.radius, 32);
+        const zoneMat = new THREE.MeshBasicMaterial({
+          color: 0xff6a00,
+          transparent: true,
+          opacity: 0.15,
+          side: THREE.DoubleSide,
+        });
+        const zone = new THREE.Mesh(zoneGeo, zoneMat);
+        zone.rotation.x = -Math.PI / 2;
+        zone.position.set(dz.x, 0.08, dz.z);
+        this.raceScene.add(zone);
+      });
+    }
+  }
+
+  exitRaceMap() {
+    if (!this.raceScene) return;
+
+    // Clean up race scene
+    this.raceScene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
+    });
+
+    // Restore city scene
+    this.scene = this.cityScene;
+    this.cityScene = null;
+    this.raceScene = null;
+    this.missions.raceMode = false;
+
+    // Re-add sun/hemi to city scene
+    this.cityScene.add(this.sun, this.sun.target, this.hemiLight);
+
+    // Respawn traffic
+    this.traffic.spawn(18, { x: 0, z: 0 }, 300);
+    this.police.spawn(4, { x: 0, z: 0 }, 300);
+
+    this.notify('Returned to city');
+  }
 }
 
 window.addEventListener('error', (e) => { document.title = 'ERR: ' + (e.message || 'unknown'); });

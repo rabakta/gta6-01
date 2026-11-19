@@ -143,30 +143,127 @@ export const RADIO_STATIONS = [
 
 // ---------------------------------------------------------------------------
 // Story. Full step scripts live in missions.js; this table is the chapter
-// select the start screen and the HUD read from. Later rounds add two
-// chapters: the Grand Prix race and the finale at the ferry.
+// select the start screen and the HUD read from. Chapter 1 focuses on
+// street racing and rebuilding the Torres Tuning crew.
 // ---------------------------------------------------------------------------
 export const MISSION_META = [
-  { name: 'Homecoming',    reward: 300,  brief: 'Rio Marin is back in Brisa Bay. Get wheels and reach the safehouse.' },
-  { name: 'Hot Wheels',    reward: 600,  brief: 'A yellow Furia GT waits at the marina. Steal it. Deliver it to the garage.' },
-  { name: 'The Pickup',    reward: 900,  brief: 'A package at the docks. Grab it and bring it back - the BCPD will notice.' },
-  { name: 'Payback',       reward: 1200, brief: 'Vex and his crew jumped you once. Ram his Vento until it burns.' },
-  { name: 'Silent Harbor', reward: 1500, brief: 'On foot. Slip into the warehouse, take the case, deal with the guards.' },
-  { name: 'The Getaway',   reward: 1800, brief: 'Three stars and a bridge to cross. Ninety seconds. Do not stop.' },
-  { name: 'Harbor Lights', reward: 2200, brief: 'Drive the Caminar truck through two roadblocks to the airfield.' },
-  { name: 'The Last Job',  reward: 5000, brief: 'The Solmar Casino vault. Five stars on the way out. Get home, Rio.' },
-  { name: 'Sunset Run',    reward: 2600, brief: 'A parcel at the docks, an airfield deadline. Seventy-five seconds, two stars.' },
-  { name: 'Lose the Tail', reward: 3200, brief: 'Vex is on your tail. Sixty seconds - do not let him touch you.' },
-  { name: 'Midnight Grand Prix', reward: 3500, brief: 'Six checkpoints, two rivals, one start line. Beat Vex\u2019s crew around the city - 150 seconds.' },
-  { name: 'The Last Ferry',      reward: 5000, brief: 'Steal the fastest car in town, make the ferry at the docks, then a five-star escape to the airfield. The last job.' },
+  // Chapter 1: Back to the Streets (Race-focused intro)
+  { id: 1, name: 'Homecoming',        type: 'story',      reward: 0,    brief: 'Jason "Jay" Torres walks free after 5 years. Miko waits with a ride.',           unlocks: ['garage', 'race_tutorial'] },
+  { id: 2, name: 'First Test',        type: 'race',       reward: 500,  brief: 'Miko challenges you: "Show me you still got it." Circuit race on city streets.', track: 'circuit',  unlocks: ['parts_run'] },
+  { id: 3, name: 'Parts Run',         type: 'fetch_race', reward: 800,  brief: 'Ro needs parts from the docks. Grab them before the tide comes in \u2014 and the cops.', track: 'sprint',   unlocks: ['ros_garage'] },
+  { id: 4, name: "Ro's Garage",       type: 'story',      reward: 0,    brief: 'Meet Ro Delgado. Unlock tuning: engine, tires, armour, respray.',                unlocks: ['qualifier'] },
+  { id: 5, name: 'Qualifier',         type: 'race',       reward: 1500, brief: 'Enter the underground league. Top 3 at Brisa Circuit earns your crew respect.',  track: 'circuit',  unlocks: ['chapter2'] },
+
+  // Chapter 2+: Existing missions shifted (renamed for Jason's story)
+  { id: 6, name: 'Hot Wheels',        type: 'story',      reward: 600,  brief: 'A yellow Furia GT waits at the marina. Steal it. Deliver it to the garage.' },
+  { id: 7, name: 'The Pickup',        type: 'story',      reward: 900,  brief: 'A package at the docks. Grab it and bring it back - the BCPD will notice.' },
+  { id: 8, name: 'Payback',           type: 'story',      reward: 1200, brief: 'Vane and his crew jumped Miko. Ram his Vento until it burns.' },
+  { id: 9, name: 'Silent Harbor',     type: 'story',      reward: 1500, brief: 'On foot. Slip into the warehouse, take the case, deal with the guards.' },
+  { id: 10, name: 'The Getaway',      type: 'story',      reward: 1800, brief: 'Three stars and a bridge to cross. Ninety seconds. Do not stop.' },
+  { id: 11, name: 'Harbor Lights',    type: 'story',      reward: 2200, brief: 'Drive the Caminar truck through two roadblocks to the airfield.' },
+  { id: 12, name: 'The Last Job',     type: 'story',      reward: 5000, brief: 'The Solmar Casino vault. Five stars on the way out. Get home, Jay.' },
+  { id: 13, name: 'Sunset Run',       type: 'story',      reward: 2600, brief: 'A parcel at the docks, an airfield deadline. Seventy-five seconds, two stars.' },
+  { id: 14, name: 'Lose the Tail',    type: 'story',      reward: 3200, brief: 'Vane is on your tail. Sixty seconds - do not let him touch you.' },
+  { id: 15, name: 'Midnight Grand Prix', type: 'race',    reward: 3500, brief: 'Six checkpoints, two rivals, one start line. Beat Vane\u2019s crew around the city - 150 seconds.', track: 'grandprix' },
+  { id: 16, name: 'The Last Ferry',   type: 'story',      reward: 5000, brief: 'Steal the fastest car in town, make the ferry at the docks, then a five-star escape to the airfield. The last job.' },
 ];
 
 export const STORY_INTRO = [
   'Brisa Bay. Sun, salt, and everyone owing someone.',
-  'Rio Marin drove getaway for the Solmar crew for six years.',
-  'Then Vex sold him out, and Rio did three years upstate.',
-  'Now he is back - and the city still owes him.',
+  'Jason "Jay" Torres drove getaway for the Torres Tuning crew for years.',
+  'Then Captain Varela sold him out, and Jay did five years upstate.',
+  'His father\'s garage is gone. His brother Miko holds what\'s left.',
+  'Now Jay is back \u2014 and the city still owes him.',
 ];
+
+// ---------------------------------------------------------------------------
+// Race Tracks (special maps loaded during race missions)
+// ---------------------------------------------------------------------------
+export const RACE_TRACKS = {
+  circuit: {
+    name: 'Brisa Circuit',
+    type: 'circuit',
+    laps: 3,
+    timeLimit: 180,
+    spawn: { x: -140, z: 140, heading: 0 },
+    checkpoints: [
+      { x: -140, z: 140, radius: 8 },
+      { x: -180, z: 60,  radius: 8 },
+      { x: -180, z: -120, radius: 8 },
+      { x: 60,   z: -120, radius: 8 },
+      { x: 60,   z: -180, radius: 8 },
+      { x: 180,  z: -180, radius: 8 },
+      { x: 180,  z: 60,   radius: 8 },
+      { x: 180,  z: 150,  radius: 8 },
+      { x: 60,   z: 150,  radius: 8 },
+      { x: -60,  z: 150,  radius: 8 },
+    ],
+    aiRacers: 5,
+    aiDifficulty: { baseSpeed: 22, catchUpFactor: 0.015 },
+    ghostEnabled: true,
+  },
+  sprint: {
+    name: 'Coastal Sprint',
+    type: 'sprint',
+    laps: 1,
+    timeLimit: 95,
+    spawn: { x: 180, z: -150, heading: -Math.PI/2 },
+    checkpoints: [
+      { x: 180, z: -150, radius: 10 },
+      { x: 180, z: -60,  radius: 8 },
+      { x: 120, z: 0,    radius: 8 },
+      { x: 60,  z: 60,   radius: 8 },
+      { x: -60, z: 120,  radius: 8 },
+      { x: -140, z: 140, radius: 10 },
+    ],
+    aiRacers: 4,
+    aiDifficulty: { baseSpeed: 24, catchUpFactor: 0.02 },
+    ghostEnabled: true,
+  },
+  drift: {
+    name: 'Industrial Drift',
+    type: 'drift',
+    laps: 3,
+    timeLimit: 150,
+    scoreTarget: 50000,
+    spawn: { x: 150, z: -180, heading: Math.PI },
+    checkpoints: [
+      { x: 150, z: -180, radius: 12 },
+      { x: 180, z: -120, radius: 10 },
+      { x: 180, z: 0,    radius: 10 },
+      { x: 120, z: 60,   radius: 10 },
+      { x: 60,  z: -60,  radius: 10 },
+      { x: 150, z: -180, radius: 12 },
+    ],
+    aiRacers: 3,
+    aiDifficulty: { baseSpeed: 20, catchUpFactor: 0.01 },
+    ghostEnabled: false,
+    driftZones: [
+      { x: 180, z: -60,  radius: 25, multiplier: 2.0 },
+      { x: 120, z: 60,   radius: 30, multiplier: 1.5 },
+      { x: 60,  z: -60,  radius: 25, multiplier: 2.0 },
+    ],
+  },
+  grandprix: {
+    name: 'Midnight Grand Prix',
+    type: 'circuit',
+    laps: 3,
+    timeLimit: 150,
+    spawn: { x: -180, z: 60, heading: -Math.PI/2 },
+    checkpoints: [
+      { x: -180, z: 60,   radius: 8 },
+      { x: -180, z: -120, radius: 8 },
+      { x: 60,   z: -120, radius: 8 },
+      { x: 60,   z: -180, radius: 8 },
+      { x: 180,  z: -180, radius: 8 },
+      { x: 180,  z: 60,   radius: 8 },
+    ],
+    aiRacers: 6,
+    aiDifficulty: { baseSpeed: 28, catchUpFactor: 0.025 },
+    ghostEnabled: true,
+    rival: { name: 'D. Vane', car: 'furia', color: 0xd21f2b, skill: 0.95 },
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Later additions.

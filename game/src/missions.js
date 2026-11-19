@@ -1,28 +1,55 @@
-// BRISA BAY — the story: twelve chapters of Rio Marin's return to
-// Brisa Bay. A mission is a list of steps; the manager runs them in order,
-// plants a beacon on the current objective, and pays out when the last
-// step clears. Two later chapters add a checkpoint street race (Midnight
-// Grand Prix, new `race` step type) and the finale (The Last Ferry), and
-// fix Mission 8 — its first two steps sat on the casino tower itself,
-// so the radii could never be reached from outside the building.
+// BRISA BAY — the story: 16 chapters of Jason "Jay" Torres' return to
+// Brisa Bay. Chapter 1 (missions 1-5) focuses on street racing and
+// rebuilding the Torres Tuning crew. Missions 6-16 continue the story.
+// Race missions load special race maps (circuit/sprint/drift/grandprix).
 import * as THREE from 'three';
-import { MISSION_META, RACE_CHECKPOINTS } from './config.js';
+import { MISSION_META, RACE_TRACKS, RACE_CHECKPOINTS } from './config.js';
 import { dist2, mulberry32, randomPointInCircle, angleDiff, clamp } from './utils.js';
 
-// Exported so tests (and future rounds) can check every step's
-// coordinates against the real city colliders.
+// Exported so tests can check every step's coordinates against the real city colliders.
 export const MISSIONS = [
+  // Mission 1: Homecoming (Story)
   {
     steps: [
       { type: 'goto', x: -150, z: 150, radius: 10, text: 'Reach the safehouse on Coral Row' },
     ],
   },
+  // Mission 2: First Test (Race - Circuit)
+  {
+    steps: [
+      { type: 'race_start', track: 'circuit', text: 'Miko challenges you: "Show me you still got it."' },
+      { type: 'race_circuit', track: 'circuit', text: 'Complete 3 laps of Brisa Circuit. Beat the rivals.', timeLimit: 180 },
+    ],
+  },
+  // Mission 3: Parts Run (Fetch + Race - Sprint)
+  {
+    steps: [
+      { type: 'race_start', track: 'sprint', text: 'Ro needs parts from the docks. Grab them before the tide comes in.' },
+      { type: 'race_sprint', track: 'sprint', text: 'Race from Docks to Torres Tuning. Cops on your tail.', timeLimit: 95 },
+    ],
+  },
+  // Mission 4: Ro's Garage (Story - unlocks tuning)
+  {
+    steps: [
+      { type: 'goto', x: 150, z: -150, radius: 10, text: 'Meet Ro Delgado at Garage 24' },
+      { type: 'goto', x: -150, z: 150, radius: 10, text: 'Return to the safehouse' },
+    ],
+  },
+  // Mission 5: Qualifier (Race - Circuit)
+  {
+    steps: [
+      { type: 'race_start', track: 'circuit', text: 'Enter the underground league. Top 3 earns crew respect.' },
+      { type: 'race_circuit', track: 'circuit', text: 'Qualifier: 3 laps, 5 AI racers. Finish top 3.', timeLimit: 180 },
+    ],
+  },
+  // Mission 6: Hot Wheels (Story)
   {
     steps: [
       { type: 'steal', x: 180, z: 150, defKey: 'furia', color: 0xf2c230, text: 'Steal the yellow Furia GT at the marina' },
       { type: 'driveTo', x: 150, z: -150, radius: 10, text: 'Deliver the Furia to the garage' },
     ],
   },
+  // Mission 7: The Pickup (Story)
   {
     steps: [
       { type: 'goto', x: 180, z: -150, radius: 8, text: 'Pick up the package at the docks' },
@@ -30,12 +57,14 @@ export const MISSIONS = [
       { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Bring the package home - the BCPD is onto you', wanted: 2 },
     ],
   },
+  // Mission 8: Payback (Story)
   {
     steps: [
-      { type: 'ram', text: 'Ram Vex\u2019s Vento until it burns' },
+      { type: 'ram', text: 'Ram Vane\'s Vento until it burns' },
       { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Lay low at the safehouse' },
     ],
   },
+  // Mission 9: Silent Harbor (Story)
   {
     steps: [
       { type: 'goto', x: 120, z: -120, radius: 10, text: 'Reach the warehouse on foot - stay quiet' },
@@ -44,29 +73,28 @@ export const MISSIONS = [
       { type: 'goto', x: -150, z: 150, radius: 10, text: 'Get the case back to the safehouse' },
     ],
   },
+  // Mission 10: The Getaway (Story)
   {
     steps: [
       { type: 'timed', x: 210, z: 0, radius: 10, seconds: 90, text: 'Cross the bridge in 90 seconds - three stars and counting', wanted: 3 },
     ],
   },
+  // Mission 11: Harbor Lights (Story)
   {
     steps: [
       { type: 'steal', x: 180, z: -150, defKey: 'caminar', color: 0x9c6b3c, text: 'Take the Caminar truck at the docks' },
       { type: 'driveTo', x: -180, z: -180, radius: 12, text: 'Drive the truck to the airfield - through the roadblocks', wanted: 2 },
     ],
   },
+  // Mission 12: The Last Job (Story)
   {
     steps: [
-      // The Solmar Casino tower sits on the (0,-180) intersection
-      // itself, so the centre of the building is inside a collider and no
-      // player can ever stand within 10m of it. The radii here reach the
-      // tower's faces (closest approach ~14m), so the steps complete from
-      // the south door instead of never completing at all.
       { type: 'goto', x: 0, z: -180, radius: 18, text: 'Get inside the Solmar Casino' },
       { type: 'collect', x: 0, z: -180, radius: 16, text: 'Empty the vault' },
-      { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Five stars. Get home, Rio.', wanted: 5 },
+      { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Five stars. Get home, Jay.', wanted: 5 },
     ],
   },
+  // Mission 13: Sunset Run (Story)
   {
     steps: [
       { type: 'goto', x: 180, z: -150, radius: 8, text: 'Pick up the sunset parcel at the docks' },
@@ -74,35 +102,23 @@ export const MISSIONS = [
       { type: 'timed', x: -180, z: -180, radius: 12, seconds: 75, text: 'Deliver it to the airfield in 75 seconds', wanted: 2 },
     ],
   },
+  // Mission 14: Lose the Tail (Story)
   {
     steps: [
-      { type: 'evade', seconds: 60, text: 'Lose the tail - keep Vex off you for 60 seconds' },
+      { type: 'evade', seconds: 60, text: 'Lose the tail - keep Vane off you for 60 seconds' },
       { type: 'driveTo', x: -150, z: 150, radius: 10, text: 'Get home to the safehouse' },
     ],
   },
-  // Mission 11 — the Grand Prix. The goto step puts Rio on the start line
-  // at Coral Row; the race step spawns the mission Furia and two rival
-  // Ventos and runs the six checkpoints around the city, timed at 150s.
-  // The rivals drive the same route at a steady pace, so the race is won
-  // by clean driving, not by outrunning a scripted ghost.
+  // Mission 15: Midnight Grand Prix (Race - Grand Prix)
   {
     steps: [
-      { type: 'goto', x: -180, z: 120, radius: 10, text: 'Meet Vex at the Coral Row start line' },
-      {
-        type: 'race',
-        startX: -180,
-        startZ: 110,
-        checkpoints: RACE_CHECKPOINTS,
-        seconds: 150,
-        text: 'Beat the rivals around all 6 checkpoints',
-      },
+      { type: 'goto', x: -180, z: 120, radius: 10, text: 'Meet Vane at the Coral Row start line' },
+      { type: 'race_start', track: 'grandprix', text: 'The Grand Prix begins. Beat Vane\'s crew around the city.' },
+      { type: 'race_circuit', track: 'grandprix', text: '3 laps, 6 checkpoints, 6 AI + Vane. 150 seconds.', timeLimit: 150 },
       { type: 'goto', x: 0, z: 0, radius: 10, text: 'Collect the prize at the Plaza' },
     ],
   },
-  // Mission 12 — the finale. Steal the fast car at the marina (parked just
-  // south of the hotel, clear of its collider), make the ferry terminal
-  // at the docks, then a five-star escape drive to the airfield. When this
-  // pays out, the story is complete.
+  // Mission 16: The Last Ferry (Story)
   {
     steps: [
       { type: 'goto', x: 180, z: 120, radius: 10, text: 'Reach the Marina' },
@@ -114,28 +130,30 @@ export const MISSIONS = [
 ];
 
 export class MissionManager {
-  // `game` is the main game object (player, world, traffic, police, peds,
-  // combat, audio, hud, save, spawnCar, addWanted, setWanted, notify).
   constructor(game) {
     this.game = game;
     this.active = -1; // mission index, -1 = free roam
     this.stepIndex = 0;
-    this.state = 'idle'; // idle | active | done | failed
+    this.state = 'idle'; // idle | active | done | failed | race_loading | race_mode
     this.timer = 0;
-    this.caughtTimer = 0; // evade: how long the tail has sat on Rio
+    this.caughtTimer = 0;
     this.kills = 0;
     this.beacon = null;
     this.marker = null;
     this.packageMesh = null;
     this.rival = null;
-    this.tail = null; // evade step: Vex's chasing Vento
+    this.tail = null;
     this.guards = [];
     this.targetCar = null;
-    this.racers = []; // race step: the rival cars
-    this.raceIndex = 0; // race step: which checkpoint Rio is chasing
+    this.racers = [];
+    this.raceIndex = 0;
     this.failReason = '';
     this.doneName = '';
     this.scene = game.scene;
+    // Race mode state
+    this.raceTrack = null;
+    this.savedCityState = null;
+    this.raceMode = false;
   }
 
   get meta() { return this.active >= 0 ? MISSION_META[this.active] : null; }
@@ -149,15 +167,23 @@ export class MissionManager {
       const step = this.currentStep;
       let t = step.text;
       if (step.type === 'timed' || step.type === 'evade') t += '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
-      if (step.type === 'race') t += '  CHECKPOINT ' + (this.raceIndex + 1) + '/' + step.checkpoints.length + '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
+      if (step.type === 'race_circuit' || step.type === 'race_sprint' || step.type === 'race_drift') {
+        t += '  CHECKPOINT ' + (this.raceIndex + 1) + '/' + (this.raceTrack?.checkpoints?.length || 0) + '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
+      }
       if (step.type === 'evade' && this.caughtTimer > 0) t += '  - SHAKE HIM!';
       if (step.type === 'eliminate') t += '  (' + this.kills + '/' + step.count + ')';
       return 'MISSION ' + (this.active + 1) + ' - ' + this.meta.name + ': ' + t;
     }
     if (this.state === 'done') return 'Mission complete - ' + this.doneName;
     if (this.state === 'failed') return 'Mission failed - ' + this.failReason;
+    if (this.state === 'race_mode') {
+      const step = this.currentStep;
+      let t = step?.text || 'Racing...';
+      if (this.raceTrack) t += '  LAP ' + (this.raceLap || 1) + '/' + (this.raceTrack.laps || 1) + '  CP ' + (this.raceIndex + 1) + '/' + this.raceTrack.checkpoints.length + '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
+      return 'RACE - ' + this.meta.name + ': ' + t;
+    }
     const next = this.game.save.missionIndex;
-    if (next >= MISSIONS.length) return 'Story complete - Brisa Bay is yours. Free roam, Rio.';
+    if (next >= MISSIONS.length) return 'Story complete - Brisa Bay is yours. Free roam, Jay.';
     return 'Next: ' + MISSION_META[next].name + ' - press M to start the mission';
   }
 
@@ -170,6 +196,7 @@ export class MissionManager {
     this.timer = 0;
     this.caughtTimer = 0;
     this.kills = 0;
+    this.raceLap = 1;
     this.beginStep();
     this.game.audio.jingle();
     this.game.notify('Mission ' + (index + 1) + ': ' + this.meta.name + ' - ' + this.meta.brief);
@@ -181,18 +208,31 @@ export class MissionManager {
     const step = this.currentStep;
     if (!step) { this.complete(); return; }
     if (step.wanted) this.game.setWanted(step.wanted);
+
     if (step.type === 'timed') this.timer = step.seconds;
+    if (step.type === 'evade') this.timer = step.seconds;
+    if (step.type === 'race_circuit' || step.type === 'race_sprint' || step.type === 'race_drift') {
+      this.timer = step.timeLimit || RACE_TRACKS[step.track]?.timeLimit || 180;
+    }
+
+    // Race start step: load race map, spawn cars, enter race mode
+    if (step.type === 'race_start') {
+      this.loadRaceTrack(step.track);
+      return; // race mode handles the rest
+    }
+
+    if (step.type === 'race_circuit' || step.type === 'race_sprint' || step.type === 'race_drift') {
+      this.enterRaceMode(step.track, step.type);
+      return;
+    }
+
     if (step.type === 'race') {
-      // The race: a mission Furia on the start line (so a player who
-      // walked here can race too) and two rival Ventos ahead of it, all
-      // facing south down the x=-180 road toward the first checkpoint.
+      // Legacy Grand Prix race
       this.timer = step.seconds;
       this.raceIndex = 0;
       this.racers = [];
       this.targetCar = this.game.spawnCar('furia', 0xf2c230, step.startX, step.startZ, Math.PI);
       this.targetCar.kind = 'mission';
-      // Two rival Ventos ahead of the start line, derived from the step's
-      // own start point so the race survives a start-line move.
       for (const s of [{ x: step.startX, z: step.startZ - 10 }, { x: step.startX, z: step.startZ - 25 }]) {
         const r = this.game.spawnCar('vento', 0x8e2f32, s.x, s.z, Math.PI);
         r.kind = 'race';
@@ -202,10 +242,6 @@ export class MissionManager {
       this.placeMarker(step.checkpoints[0].x, step.checkpoints[0].z);
     }
     if (step.type === 'evade') {
-      // Vex's tail: a Vento that chases Rio for the whole step. It starts
-      // on a ring 38m out, so Rio always gets a head start — the step is
-      // won by driving, not by spawning luck.
-      this.timer = step.seconds;
       this.caughtTimer = 0;
       const g = this.game;
       const a = Math.random() * Math.PI * 2;
@@ -213,7 +249,7 @@ export class MissionManager {
       this.tail = g.spawnCar('vento', 0x8e2f32, spot.x, spot.z, 0);
       this.tail.kind = 'tail';
       this.tail.ai = { axis: 'x', dir: 1, targetSpeed: 17, wait: 0 };
-      g.notify('Vex is on your tail - do not let him touch you!');
+      g.notify('Vane is on your tail - do not let him touch you!');
     }
     if (step.type === 'eliminate') {
       this.kills = 0;
@@ -221,12 +257,11 @@ export class MissionManager {
     }
     if (step.type === 'ram' && !this.rival) {
       const g = this.game;
-      // Vex starts somewhere on the streets nearby, not at a fixed offset.
       const spot = randomPointInCircle(mulberry32((Date.now() % 100000) + 3), g.player.pos.x, g.player.pos.z, 45);
       this.rival = g.spawnCar('vento', 0x8e2f32, spot.x, spot.z, 0);
       this.rival.kind = 'rival';
       this.rival.ai = { axis: 'x', dir: 1, targetSpeed: 16, wait: 0 };
-      g.notify('Vex is running - catch his Vento and ram it!');
+      g.notify('Vane is running - catch his Vento and ram it!');
     }
     if (step.type === 'steal') {
       this.targetCar = this.game.spawnCar(step.defKey, step.color, step.x, step.z, Math.PI / 2);
@@ -238,11 +273,127 @@ export class MissionManager {
     } else if (step.x !== undefined) {
       this.placeMarker(step.x, step.z);
     }
-    // Toast every new step so the player always knows what changed.
     if (this.stepIndex > 0) this.game.notify(step.text);
-    // The banner says the same thing, big and gold — a step change is the
-    // one moment the player must not miss while driving.
     if (this.game.hud) this.game.hud.banner(this.objectiveText());
+  }
+
+  // Load a race track: save city state, swap to race map
+  loadRaceTrack(trackKey) {
+    const track = RACE_TRACKS[trackKey];
+    if (!track) { this.fail('Race track not found: ' + trackKey); return; }
+
+    this.state = 'race_loading';
+    this.raceTrack = track;
+    this.raceTrackKey = trackKey;
+
+    // Save current city state
+    this.savedCityState = this.saveCityState();
+
+    // Notify game to swap to race map
+    this.game.enterRaceMap(track);
+
+    // After map loads, begin the actual race step
+    // The race step will be handled in next update cycle
+    this.stepIndex++;
+    this.beginStep();
+  }
+
+  enterRaceMode(trackKey, raceType) {
+    const track = RACE_TRACKS[trackKey];
+    if (!track) { this.fail('Race track not found: ' + trackKey); return; }
+
+    this.state = 'race_mode';
+    this.raceTrack = track;
+    this.raceTrackKey = trackKey;
+    this.raceType = raceType;
+    this.raceLap = 1;
+    this.raceIndex = 0;
+    this.racers = [];
+
+    // Spawn player car at track spawn
+    const spawn = track.spawn;
+    this.targetCar = this.game.spawnCar('furia', 0xf2c230, spawn.x, spawn.z, spawn.heading);
+    this.targetCar.kind = 'mission_race';
+    this.game.player.enterCar(this.targetCar);
+
+    // Spawn AI racers
+    const aiDiff = track.aiDifficulty || { baseSpeed: 22, catchUpFactor: 0.015 };
+    for (let i = 0; i < (track.aiRacers || 4); i++) {
+      const carDef = track.rival?.car || 'vento';
+      const carColor = track.rival?.color || [0x8e2f32, 0x2b3a55, 0xf2c230, 0x5a7d5a][i % 4];
+      const r = this.game.spawnCar(carDef, carColor,
+        spawn.x + (Math.random() - 0.5) * 10,
+        spawn.z + (Math.random() - 0.5) * 10,
+        spawn.heading);
+      r.kind = 'race';
+      r.raceIndex = 0;
+      r.raceLap = 1;
+      r.aiDifficulty = aiDiff;
+      r.aiSkill = track.rival && i === 0 ? track.rival.skill : 0.7 + Math.random() * 0.2;
+      this.racers.push(r);
+    }
+
+    // Place first checkpoint marker
+    this.placeMarker(track.checkpoints[0].x, track.checkpoints[0].z);
+    this.game.notify('Race started! ' + track.name);
+    if (this.game.hud) this.game.hud.showRaceHUD(track, this);
+  }
+
+  saveCityState() {
+    const g = this.game;
+    return {
+      player: {
+        pos: { x: g.player.pos.x, z: g.player.pos.z },
+        heading: g.player.heading,
+        health: g.player.health,
+        armor: g.player.armor,
+        inCar: g.player.inCar ? g.player.inCar.defKey : null,
+        currentWeapon: g.save.currentWeapon,
+      },
+      traffic: g.traffic.cars.map(c => ({
+        pos: { x: c.pos.x, z: c.pos.z },
+        heading: c.heading,
+        speed: c.speed,
+        defKey: c.defKey,
+        color: c.mesh.userData.body?.material?.color?.getHex() || 0x888888,
+      })),
+      police: {
+        cars: g.police.cars.map(c => ({ pos: { x: c.pos.x, z: c.pos.z }, heading: c.heading })),
+        wantedLevel: g.wanted,
+        roadblocks: g.police.blockers || [],
+      },
+      peds: g.peds.peds.map(p => ({ pos: { x: p.pos.x, z: p.pos.z }, state: p.state })),
+      timeOfDay: g.tod,
+      wanted: g.wanted,
+      activeMission: this.active,
+    };
+  }
+
+  restoreCityState() {
+    if (!this.savedCityState) return;
+    const s = this.savedCityState;
+    const g = this.game;
+
+    // Restore player
+    g.player.pos.set(s.player.pos.x, 0, s.player.pos.z);
+    g.player.heading = s.player.heading;
+    g.player.health = s.player.health;
+    g.player.armor = s.player.armor;
+    if (s.player.inCar) {
+      // Re-spawn player's car
+      const car = g.spawnCar(s.player.inCar, 0xc94f43, s.player.pos.x, s.player.pos.z, s.player.heading);
+      g.player.enterCar(car);
+    }
+    g.save.currentWeapon = s.player.currentWeapon;
+
+    // Restore time of day
+    g.tod = s.timeOfDay;
+    g.setWanted(s.wanted);
+
+    // Traffic and police will respawn naturally via their managers
+    // (We don't fully restore every car position for simplicity)
+
+    this.savedCityState = null;
   }
 
   placeMarker(x, z) {
@@ -288,13 +439,7 @@ export class MissionManager {
 
   complete() {
     this.clearMarker();
-    // The finale: the story is over, so the objective line falls through
-    // to the idle branch ("Story complete") instead of sitting on
-    // "Mission complete" forever — there is no next mission to start.
     this.state = this.active + 1 >= MISSIONS.length ? 'idle' : 'done';
-    // Capture the name first: active is cleared below, and the 'done'
-    // objective line reads it every frame — reading this.meta after
-    // clearing active would be null.name and crash the game loop.
     this.doneName = this.meta.name;
     const reward = this.meta.reward;
     this.game.save.cash += reward;
@@ -313,18 +458,16 @@ export class MissionManager {
     this.cleanupEntities();
     this.active = -1;
     this.stepIndex = 0;
+    this.raceMode = false;
   }
 
   fail(reason) {
     this.clearMarker();
-    // Capture the name first: active is cleared below, and meta reads it.
     const name = this.meta ? this.meta.name : 'Mission';
     this.state = 'failed';
     this.failReason = reason;
     this.game.audio.fail();
     this.game.notify('Mission failed - ' + reason + '. Press M to retry.');
-    // A fail splash only in live play — when Rio dies the WASTED screen
-    // owns the moment instead, and the fail line would double up under it.
     if (this.game.state === 'playing' && this.game.hud) {
       this.game.hud.showMissionSplash({
         kind: 'fail', title: 'MISSION FAILED', name,
@@ -332,8 +475,14 @@ export class MissionManager {
       });
     }
     this.cleanupEntities();
+    // If we were in race mode, restore city
+    if (this.raceMode && this.savedCityState) {
+      this.game.exitRaceMap();
+      this.restoreCityState();
+    }
     this.active = -1;
     this.stepIndex = 0;
+    this.raceMode = false;
   }
 
   cleanupEntities() {
@@ -344,6 +493,10 @@ export class MissionManager {
     for (const g of this.guards) this.game.peds.remove(g);
     this.guards = [];
     this.targetCar = null;
+    if (this.raceMode) {
+      this.game.exitRaceMap();
+      this.restoreCityState();
+    }
   }
 
   cleanup() {
@@ -351,7 +504,6 @@ export class MissionManager {
     this.cleanupEntities();
   }
 
-  // Called by combat when a guard dies.
   onGuardKilled() {
     if (this.state !== 'active' || !this.currentStep || this.currentStep.type !== 'eliminate') return;
     this.kills++;
@@ -360,16 +512,11 @@ export class MissionManager {
 
   onRivalDead() {
     if (this.state === 'active' && this.currentStep && this.currentStep.type === 'ram') {
-      this.game.notify('Vex\u2019s Vento is burning. Nice work.');
+      this.game.notify('Vane\u2019s Vento is burning. Nice work.');
       this.nextStep();
     }
   }
 
-  // A rival drives at a checkpoint like a police unit drives at Rio:
-  // steer at the target, ease off the throttle for sharp turns so the
-  // car actually makes the corner instead of sliding past the checkpoint
-  // and looping back. Rivals run a steady 20 m/s — fast enough to win
-  // if Rio dawdles, slow enough to beat in a Furia.
   raceDrive(car, target, dt) {
     const dx = target.x - car.pos.x, dz = target.z - car.pos.z;
     const targetHeading = Math.atan2(dx, dz);
@@ -380,45 +527,39 @@ export class MissionManager {
   }
 
   update(dt) {
-    if (this.state !== 'active' || !this.currentStep) return;
+    if (this.state === 'race_loading') return; // waiting for map load
+    if (this.state !== 'active' && this.state !== 'race_mode') return;
     const step = this.currentStep;
     const g = this.game;
     const p = g.player.pos;
+
     if (this.beacon) {
       this.beacon.rotation.y += dt * 0.8;
       this.beacon.material.opacity = 0.22 + Math.sin(performance.now() / 300) * 0.08;
     }
-    // The ground ring breathes so the objective reads from far away.
     if (this.marker) {
       const s = 1 + Math.sin(performance.now() / 300) * 0.08;
       this.marker.scale.set(s, s, 1);
     }
     if (this.packageMesh) this.packageMesh.rotation.y += dt * 2;
-    if (step.type === 'timed') {
+
+    // Standard step types
+    if (step && step.type === 'timed') {
       this.timer -= dt;
       if (this.timer <= 0) { this.fail('Out of time'); return; }
-      // The first build only counted the timer down — reaching the bridge
-      // never completed the step, so the mission could never be won.
       if (dist2(p.x, p.z, step.x, step.z) < step.radius) { this.nextStep(); return; }
     }
-    if (step.type === 'evade') {
+    if (step && step.type === 'evade') {
       this.timer -= dt;
       if (this.timer <= 0) { this.nextStep(); return; }
       if (this.tail) {
         if (this.tail.dead) {
-          // Ramming the tail off the road counts as losing it.
           this.game.notify('Tail\'s gone. Nice driving.');
           this.nextStep();
           return;
         }
-        // The tail pursues Rio directly — steering at him like a police
-        // unit, not cruising the grid like traffic. It closes fast from
-        // range, then creeps in close so it can actually stay on him.
         const dx = p.x - this.tail.pos.x, dz = p.z - this.tail.pos.z;
         const d = Math.hypot(dx, dz) || 1;
-        // A tail arriving at 30 m/s would blow straight past Rio and out
-        // of the 6m catch radius in one frame, so it never actually
-        // catches him. Inside 8m it sheds speed first and pulls alongside.
         if (d < 8 && this.tail.speed > 6) this.tail.speed = 6;
         const targetHeading = Math.atan2(dx, dz);
         const steer = clamp(-angleDiff(this.tail.heading, targetHeading) * 1.6, -1, 1);
@@ -426,33 +567,33 @@ export class MissionManager {
         this.tail.drive(dt, throttle, steer, g.world.colliders);
         if (d < 6) {
           this.caughtTimer += dt;
-          if (this.caughtTimer > 1.5) { this.fail('Vex caught up with you'); return; }
+          if (this.caughtTimer > 1.5) { this.fail('Vane caught up with you'); return; }
         } else {
           this.caughtTimer = Math.max(0, this.caughtTimer - dt * 2);
         }
       }
     }
-    if (step.type === 'goto' || step.type === 'driveTo') {
+    if (step && (step.type === 'goto' || step.type === 'driveTo')) {
       if (dist2(p.x, p.z, step.x, step.z) < step.radius) this.nextStep();
-    } else if (step.type === 'collect') {
+    } else if (step && step.type === 'collect') {
       if (dist2(p.x, p.z, step.x, step.z) < step.radius) {
         if (step.wanted) g.setWanted(step.wanted);
         g.audio.blip(1200, 0.12, 0.2);
         this.nextStep();
       }
-    } else if (step.type === 'steal') {
+    } else if (step && step.type === 'steal') {
       if (g.player.inCar === this.targetCar) {
         g.save.stats.carsStolen++;
         g.notify('That\u2019s the one. Now deliver it.');
         this.nextStep();
       }
-    } else if (step.type === 'ram') {
+    } else if (step && step.type === 'ram') {
       if (this.rival && this.rival.dead) this.onRivalDead();
       else if (this.rival) {
-        // Rival runs: traffic-style driving, faster than normal.
         this.game.trafficLikeDrive(this.rival, dt, 16);
       }
-    } else if (step.type === 'race') {
+    } else if (step && step.type === 'race') {
+      // Legacy Grand Prix
       this.timer -= dt;
       if (this.timer <= 0) { this.fail('Out of time - the Grand Prix is over'); return; }
       const cp = step.checkpoints[this.raceIndex];
@@ -465,19 +606,130 @@ export class MissionManager {
         this.placeMarker(next.x, next.z);
         g.notify('Checkpoint ' + this.raceIndex + '/' + step.checkpoints.length);
       }
-      // The rivals chase the same checkpoints. A rival that finishes
-      // first wins the race — and Rio loses it.
       for (const r of this.racers) {
         if (r.dead) continue;
         const target = step.checkpoints[r.raceIndex];
         if (!target) continue;
         if (dist2(r.pos.x, r.pos.z, target.x, target.z) < 8) {
           r.raceIndex++;
-          if (r.raceIndex >= step.checkpoints.length) { this.fail('Vex\u2019s crew beat you to the line'); return; }
+          if (r.raceIndex >= step.checkpoints.length) { this.fail('Vane\u2019s crew beat you to the line'); return; }
           continue;
         }
         this.raceDrive(r, target, dt);
       }
     }
+
+    // Race mode update
+    if (this.state === 'race_mode' && this.raceTrack) {
+      this.updateRaceMode(dt);
+    }
+  }
+
+  updateRaceMode(dt) {
+    const track = this.raceTrack;
+    const g = this.game;
+    const p = g.player.pos;
+
+    // Timer
+    this.timer -= dt;
+    if (this.timer <= 0) { this.fail('Out of time'); return; }
+
+    // Check checkpoint
+    const cp = track.checkpoints[this.raceIndex];
+    if (cp && dist2(p.x, p.z, cp.x, cp.z) < (cp.radius || 8)) {
+      this.raceIndex++;
+      g.audio.blip(1320, 0.12, 0.2);
+      g.notify('Checkpoint ' + this.raceIndex + '/' + track.checkpoints.length);
+      if (this.raceIndex >= track.checkpoints.length) {
+        // Lap complete or race complete
+        this.raceLap++;
+        if (this.raceLap > track.laps) {
+          this.raceFinish();
+          return;
+        }
+        this.raceIndex = 0;
+        g.notify('Lap ' + this.raceLap + '/' + track.laps);
+      }
+      this.clearMarker();
+      const next = track.checkpoints[this.raceIndex];
+      this.placeMarker(next.x, next.z);
+    }
+
+    // Update AI racers
+    for (const r of this.racers) {
+      if (r.dead) continue;
+      const target = track.checkpoints[r.raceIndex];
+      if (!target) continue;
+      if (dist2(r.pos.x, r.pos.z, target.x, target.z) < 8) {
+        r.raceIndex++;
+        if (r.raceIndex >= track.checkpoints.length) {
+          r.raceLap++;
+          if (r.raceLap > track.laps) {
+            // AI finished race
+            if (this.raceLap <= track.laps) {
+              this.fail('An opponent beat you to the finish!');
+            }
+            continue;
+          }
+          r.raceIndex = 0;
+        }
+        continue;
+      }
+      this.raceDriveAI(r, target, dt, track);
+    }
+
+    // Update HUD
+    if (g.hud && g.hud.updateRaceHUD) {
+      g.hud.updateRaceHUD(this);
+    }
+  }
+
+  raceDriveAI(car, target, dt, track) {
+    const dx = target.x - car.pos.x, dz = target.z - car.pos.z;
+    const targetHeading = Math.atan2(dx, dz);
+    const turn = angleDiff(car.heading, targetHeading);
+
+    // Hybrid AI: base skill + light catch-up
+    const baseSkill = car.aiSkill || 0.7;
+    let catchUp = 0;
+    if (this.game.player.pos) {
+      const d2 = dist2(this.game.player.pos.x, this.game.player.pos.z, car.pos.x, car.pos.z);
+      catchUp = Math.max(0, (d2 - 2500) * 0.001);
+    }
+    const targetSpeed = (car.aiDifficulty?.baseSpeed || 22) * baseSkill + catchUp;
+
+    const steer = clamp(-turn * (1.4 + baseSkill * 0.4), -1, 1);
+    const throttle = Math.abs(turn) > 0.7 ? 0.4 : (car.speed < targetSpeed ? 0.9 : 0.1);
+    car.drive(dt, throttle, steer, this.game.world.colliders);
+  }
+
+  raceFinish() {
+    // Player finished race
+    const track = this.raceTrack;
+    const g = this.game;
+
+    // Check position vs AI
+    let playerPos = 1;
+    for (const r of this.racers) {
+      if (r.raceLap > track.laps || (r.raceLap === track.laps && r.raceIndex >= track.checkpoints.length)) {
+        playerPos++;
+      }
+    }
+
+    // Determine reward based on position and track type
+    let reward = this.meta.reward;
+    if (track.type === 'drift') {
+      // Drift scoring would go here
+    }
+
+    g.notify('Race finished! Position: ' + playerPos);
+    if (g.hud) g.hud.hideRaceHUD();
+
+    // Exit race mode, restore city
+    this.raceMode = false;
+    g.exitRaceMap();
+    this.restoreCityState();
+
+    this.nextStep();
   }
 }
