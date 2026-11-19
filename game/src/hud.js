@@ -72,6 +72,35 @@ const HUD_CSS = [
   '#phone-menu .phone-detail.active{display:block}',
   '#phone-menu .phone-detail .back-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(74,111,165,0.2);border:1px solid #4a6fa5;border-radius:8px;color:#ffd34d;font-weight:700;cursor:pointer;margin-bottom:20px;transition:background .15s}',
   '#phone-menu .phone-detail .back-btn:hover{background:rgba(74,111,165,0.4)}',
+  // Mission Box (left panel) - persistent mission/race info
+  '#mission-box{position:fixed;top:120px;left:16px;width:300px;background:linear-gradient(180deg,rgba(10,16,24,0.95) 0%,rgba(15,22,34,0.98) 100%);border:2px solid #4a6fa5;border-radius:12px;box-shadow:0 0 30px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.1);z-index:10;color:#fff;font-family:Arial,sans-serif;transition:transform .3s,opacity .3s,width .3s;overflow:hidden}',
+  '#mission-box.collapsed{width:48px}',
+  '#mission-box.collapsed .mb-content{display:none}',
+  '#mission-box.collapsed .mb-toggle::after{content:"▶"}',
+  '#mission-box .mb-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(74,111,165,0.3)}',
+  '#mission-box .mb-title{font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:1px;color:#ffd34d}',
+  '#mission-box .mb-toggle{background:none;border:none;color:#bcd6ea;font-size:16px;cursor:pointer;padding:2px 8px;border-radius:4px;transition:background .15s}',
+  '#mission-box .mb-toggle:hover{background:rgba(255,211,77,0.2)}',
+  '#mission-box .mb-content{padding:12px 14px}',
+  '#mission-box .mb-row{display:flex;justify-content:space-between;margin:8px 0;font-size:12px}',
+  '#mission-box .mb-label{color:#8aa8c8}',
+  '#mission-box .mb-value{color:#fff;font-weight:700;font-family:monospace}',
+  '#mission-box .mb-divider{height:1px;background:rgba(74,111,165,0.3);margin:10px 0}',
+  '#mission-box .mb-progress{height:6px;background:rgba(0,0,0,0.5);border-radius:3px;overflow:hidden;margin:8px 0}',
+  '#mission-box .mb-progress-fill{height:100%;background:linear-gradient(90deg,#2f7fc9,#7ec2f2);transition:width .3s}',
+  '#mission-box .mb-buttons{display:flex;gap:6px;margin-top:12px}',
+  '#mission-box .mb-btn{flex:1;padding:8px 12px;background:#1d2733;color:#fff;border:1px solid #4a6fa5;border-radius:6px;font:700 11px Arial,sans-serif;cursor:pointer;transition:all .15s}',
+  '#mission-box .mb-btn:hover{background:#2b3a55}',
+  '#mission-box .mb-btn.gold{background:#8a6420;border-color:#ffd34d}',
+  '#mission-box .mb-btn.danger{background:#8a2d2d;border-color:#ff5a4d}',
+  '#mission-box.race-mode .mb-title{color:#00ff88}',
+  '#mission-box .mb-lap{display:flex;justify-content:space-between;font-size:12px;margin:4px 0}',
+  '#mission-box .mb-checkpoint{display:flex;justify-content:space-between;font-size:12px;margin:4px 0}',
+  '#mission-box .mb-position{display:flex;justify-content:space-between;font-size:12px;margin:4px 0}',
+  '#mission-box .mb-delta{font-size:11px;text-align:center;margin-top:6px;padding:4px;border-radius:4px;background:rgba(0,0,0,0.3)}',
+  '#mission-box .mb-delta.behind{color:#ff5a4d}',
+  '#mission-box .mb-delta.ahead{color:#00ff88}',
+  '#mission-box .mb-delta.even{color:#ffd34d}',
 ].join('\n');
 
 const HUD_IDS = ['cash', 'health-fill', 'health-num', 'armor', 'mods', 'stars', 'weapon', 'ammo', 'weapons', 'speed', 'radio', 'objective', 'toast', 'clock', 'menu', 'menu-title', 'menu-body', 'menu-hint', 'shop', 'shop-title', 'shop-items', 'damage'];
@@ -157,6 +186,8 @@ export class HUD {
     this.weaponWheelEl = this.buildWeaponWheel();
     // Phone pause menu
     this.phoneMenuEl = this.buildPhoneMenu();
+    // Mission Box (left panel)
+    this.missionBoxEl = this.buildMissionBox();
   }
 
   bindTouch(touch) { this.touch = touch; }
@@ -387,6 +418,7 @@ export class HUD {
     this.setPrompt(state.prompt || null);
     if (this.touch) this.touch.setContext({ inCar: !!state.inCar, weapon: state.weaponKey || 'fists' });
     this.drawMinimap(state);
+    this.updateMissionBox(state);
   }
 
   drawMinimap(state) {
@@ -650,6 +682,128 @@ export class HUD {
     return x >= -margin && x <= S + margin && z >= -margin && z <= S + margin;
   }
 
+  // Mission Box (left panel) - persistent mission/race info
+  buildMissionBox() {
+    const el = document.createElement('div');
+    el.id = 'mission-box';
+    el.innerHTML = `
+      <div class="mb-header">
+        <span class="mb-title">MISSION</span>
+        <button class="mb-toggle" title="Collapse/Expand">▼</button>
+      </div>
+      <div class="mb-content">
+        <div class="mb-row"><span class="mb-label">MISSION</span><span class="mb-value" id="mb-mission">—</span></div>
+        <div class="mb-row"><span class="mb-label">OBJECTIVE</span><span class="mb-value" id="mb-objective">Free roam</span></div>
+        <div id="mb-race-data" style="display:none">
+          <div class="mb-divider"></div>
+          <div class="mb-lap"><span class="mb-label">LAP</span><span class="mb-value" id="mb-lap">1/1</span></div>
+          <div class="mb-checkpoint"><span class="mb-label">CHECKPOINT</span><span class="mb-value" id="mb-cp">1/1</span></div>
+          <div class="mb-position"><span class="mb-label">POSITION</span><span class="mb-value" id="mb-pos">1/1</span></div>
+          <div class="mb-progress"><div class="mb-progress-fill" id="mb-progress" style="width:0%"></div></div>
+          <div class="mb-delta" id="mb-delta"></div>
+        </div>
+        <div class="mb-divider"></div>
+        <div class="mb-buttons">
+          <button class="mb-btn gold" id="mb-gps">GPS</button>
+          <button class="mb-btn" id="mb-restart">RESTART</button>
+          <button class="mb-btn danger" id="mb-quit">QUIT</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(el);
+
+    // Toggle collapse
+    const toggle = el.querySelector('.mb-toggle');
+    toggle.addEventListener('click', () => {
+      el.classList.toggle('collapsed');
+    });
+
+    // Button handlers
+    el.querySelector('#mb-gps').addEventListener('click', () => {
+      if (this.game && this.game.missions && this.game.missions.currentStep) {
+        const step = this.game.missions.currentStep;
+        if (step && step.x !== undefined) {
+          this.game.notify('Waypoint set to objective');
+        }
+      }
+    });
+    el.querySelector('#mb-restart').addEventListener('click', () => {
+      if (this.game) {
+        this.game.restartMission();
+      }
+    });
+    el.querySelector('#mb-quit').addEventListener('click', () => {
+      if (this.game && this.game.missions) {
+        this.game.missions.fail('Mission abandoned');
+      }
+    });
+
+    return el;
+  }
+
+  updateMissionBox(state) {
+    if (!this.missionBoxEl) return;
+    const mm = this.game?.missions;
+    if (!mm) return;
+
+    const meta = mm.meta;
+    const step = mm.currentStep;
+    const isRace = mm.state === 'race_mode' || (step && (step.type === 'race_circuit' || step.type === 'race_sprint' || step.type === 'race_drift' || step.type === 'race'));
+
+    // Mission name
+    this.missionBoxEl.querySelector('#mb-mission').textContent = meta ? meta.name : '—';
+
+    // Objective text (shortened)
+    let objText = state.objective || 'Free roam';
+    if (objText.length > 30) objText = objText.substring(0, 27) + '...';
+    this.missionBoxEl.querySelector('#mb-objective').textContent = objText;
+
+    // Race data section
+    const raceSection = this.missionBoxEl.querySelector('#mb-race-data');
+    if (isRace && mm.raceTrack) {
+      raceSection.style.display = 'block';
+      this.missionBoxEl.classList.add('race-mode');
+      this.missionBoxEl.querySelector('.mb-title').textContent = 'RACE';
+
+      const track = mm.raceTrack;
+      // Lap
+      this.missionBoxEl.querySelector('#mb-lap').textContent = (mm.raceLap || 1) + '/' + track.laps;
+      // Checkpoint
+      this.missionBoxEl.querySelector('#mb-cp').textContent = (mm.raceIndex + 1) + '/' + track.checkpoints.length;
+      // Position
+      let pos = 1;
+      for (const r of mm.racers || []) {
+        if (r.raceLap > track.laps || (r.raceLap === track.laps && r.raceIndex >= track.checkpoints.length)) {
+          pos++;
+        }
+      }
+      this.missionBoxEl.querySelector('#mb-pos').textContent = pos + '/' + ((track.aiRacers || 4) + 1);
+      // Progress (overall race progress)
+      const totalCP = track.laps * track.checkpoints.length;
+      const currentCP = (mm.raceLap - 1) * track.checkpoints.length + mm.raceIndex;
+      const progress = totalCP > 0 ? (currentCP / totalCP) * 100 : 0;
+      this.missionBoxEl.querySelector('#mb-progress').style.width = progress + '%';
+      // Delta
+      const deltaEl = this.missionBoxEl.querySelector('#mb-delta');
+      if (mm.racers && mm.racers.length > 0) {
+        const leader = mm.racers.reduce((best, r) => {
+          const rProg = r.raceLap * track.checkpoints.length + r.raceIndex;
+          const bProg = best.raceLap * track.checkpoints.length + best.raceIndex;
+          return rProg > bProg ? r : best;
+        });
+        const playerProg = (mm.raceLap - 1) * track.checkpoints.length + mm.raceIndex;
+        const leaderProg = (leader.raceLap - 1) * track.checkpoints.length + leader.raceIndex;
+        const diff = leaderProg - playerProg;
+        deltaEl.textContent = diff > 0 ? '+' + diff + ' CP behind' : diff < 0 ? Math.abs(diff) + ' CP ahead' : 'SIDE BY SIDE';
+        deltaEl.className = 'mb-delta ' + (diff > 0 ? 'behind' : diff < 0 ? 'ahead' : 'even');
+      }
+    } else {
+      raceSection.style.display = 'none';
+      this.missionBoxEl.classList.remove('race-mode');
+      this.missionBoxEl.querySelector('.mb-title').textContent = 'MISSION';
+    }
+  }
+
   // Weapon wheel: radial selector (hold Tab/weapon button)
   buildWeaponWheel() {
     const el = document.createElement('div');
@@ -773,7 +927,7 @@ export class HUD {
     }
   }
 
-  // Race HUD: shows during race_mode
+  // Race HUD: shows during race_mode (top center)
   showRaceHUD(track, missionManager) {
     this.raceHUD = document.createElement('div');
     this.raceHUD.id = 'race-hud';
