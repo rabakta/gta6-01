@@ -138,12 +138,12 @@ export function buildCity(scene) {
     const sun = new THREE.DirectionalLight(PALETTE.sun, PALETTE.sunIntensity);
     sun.position.set(-160, 190, -120);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024); // reduced from 2048
-    sun.shadow.camera.left = -220; // tighter frustum
-    sun.shadow.camera.right = 220;
-    sun.shadow.camera.top = 220;
-    sun.shadow.camera.bottom = -220;
-    sun.shadow.camera.far = 600; // reduced from 800
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -280;
+    sun.shadow.camera.right = 280;
+    sun.shadow.camera.top = 280;
+    sun.shadow.camera.bottom = -280;
+    sun.shadow.camera.far = 800;
     sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.02;
     scene.add(sun);
@@ -362,7 +362,7 @@ export function buildCity(scene) {
   const kerbGeoZ = new THREE.PlaneGeometry(1.2, roadLen);
   const kerbGeoX = new THREE.PlaneGeometry(roadLen, 1.2);
   for (const l of roadLines()) {
-    for (const off of [-7.6, 7.6]) {
+    for (const off of [-7, 7]) {
       const kz = new THREE.Mesh(kerbGeoZ, kerbMat);
       kz.rotation.x = -Math.PI / 2;
       kz.position.set(l + off, 0.09, 0);
@@ -382,64 +382,67 @@ export function buildCity(scene) {
 
   // A zebra crossing on every intersection, plaza tiles on the four
   // central ones instead. One shared geometry and material each.
-    const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
-    const crossTex = crosswalkTexture();
-    const crossMat = new THREE.MeshStandardMaterial({ 
-      map: crossTex.map, 
-      roughnessMap: crossTex.roughnessMap,
-      metalnessMap: crossTex.metalnessMap,
-      normalMap: crossTex.normalMap,
-      normalScale: new THREE.Vector2(0.5, 0.5),
-      displacementMap: crossTex.displacementMap,
-      displacementScale: crossTex.displacementScale || 0.02,
-      aoMap: crossTex.aoMap,
-      aoMapIntensity: 1.0,
-      detailNormalMap: crossTex.detailNormalMap,
-      detailNormalScale: new THREE.Vector2(1, 1),
-      clearcoatNormalMap: crossTex.clearcoatNormalMap,
-      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
-    });
-    const plazaTex = plazaTexture();
-    const plazaMat = new THREE.MeshStandardMaterial({ 
-      map: plazaTex.map, 
-      roughnessMap: plazaTex.roughnessMap,
-      metalnessMap: plazaTex.metalnessMap,
-      normalMap: plazaTex.normalMap,
-      normalScale: new THREE.Vector2(0.7, 0.7),
-      displacementMap: plazaTex.displacementMap,
-      displacementScale: plazaTex.displacementScale || 0.015,
-      aoMap: plazaTex.aoMap,
-      aoMapIntensity: 1.0,
-      detailNormalMap: plazaTex.detailNormalMap,
-      detailNormalScale: new THREE.Vector2(1, 1),
-      clearcoatNormalMap: plazaTex.clearcoatNormalMap,
-      clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
-    });
-  const plazaGeo = new THREE.PlaneGeometry(16, 16);
-  const lines = roadLines();
-  lines.forEach((lx, ix) => {
-    lines.forEach((lz, iz) => {
-      if (PLAZA_SPOTS.some(([px, pz]) => px === lx && pz === lz)) {
-        const plaza = new THREE.Mesh(plazaGeo, plazaMat);
-        plaza.rotation.x = -Math.PI / 2;
-        plaza.position.set(lx, 0.1, lz);
-        plaza.receiveShadow = true;
-        plaza.userData.v5kind = 'plaza';
-        scene.add(plaza);
-        v5counts.plazas++;
-        return;
-      }
-      const cross = new THREE.Mesh(crossGeo, crossMat);
-      cross.rotation.x = -Math.PI / 2;
-      // Alternate the stripe direction so the grid does not repeat one way.
-      cross.rotation.z = (ix + iz) % 2 === 0 ? 0 : Math.PI / 2;
-      cross.position.set(lx, 0.1, lz);
-      cross.receiveShadow = true;
-      cross.userData.v5kind = 'crosswalk';
-      scene.add(cross);
-      v5counts.crosswalks++;
-    });
-  });
+    const crosswalkWidth = 4; // standard crossing width
+      const crossGeo = new THREE.PlaneGeometry(CITY.roadWidth, crosswalkWidth);
+      const crossTex = crosswalkTexture();
+      const crossMat = new THREE.MeshStandardMaterial({ 
+        map: crossTex.map, 
+        roughnessMap: crossTex.roughnessMap,
+        metalnessMap: crossTex.metalnessMap,
+        normalMap: crossTex.normalMap,
+        normalScale: new THREE.Vector2(0.5, 0.5),
+        displacementMap: crossTex.displacementMap,
+        displacementScale: crossTex.displacementScale || 0.02,
+        aoMap: crossTex.aoMap,
+        aoMapIntensity: 1.0,
+        detailNormalMap: crossTex.detailNormalMap,
+        detailNormalScale: new THREE.Vector2(1, 1),
+        clearcoatNormalMap: crossTex.clearcoatNormalMap,
+        clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+      });
+      const plazaTex = plazaTexture();
+      const plazaMat = new THREE.MeshStandardMaterial({ 
+        map: plazaTex.map, 
+        roughnessMap: plazaTex.roughnessMap,
+        metalnessMap: plazaTex.metalnessMap,
+        normalMap: plazaTex.normalMap,
+        normalScale: new THREE.Vector2(0.7, 0.7),
+        displacementMap: plazaTex.displacementMap,
+        displacementScale: plazaTex.displacementScale || 0.015,
+        aoMap: plazaTex.aoMap,
+        aoMapIntensity: 1.0,
+        detailNormalMap: plazaTex.detailNormalMap,
+        detailNormalScale: new THREE.Vector2(1, 1),
+        clearcoatNormalMap: plazaTex.clearcoatNormalMap,
+        clearcoatNormalScale: new THREE.Vector2(0.5, 0.5),
+      });
+      const plazaGeo = new THREE.PlaneGeometry(CITY.roadWidth, CITY.roadWidth);
+      const lines = roadLines();
+      lines.forEach((lx, ix) => {
+        lines.forEach((lz, iz) => {
+          if (PLAZA_SPOTS.some(([px, pz]) => px === lx && pz === lz)) {
+            const plaza = new THREE.Mesh(plazaGeo, plazaMat);
+            plaza.rotation.x = -Math.PI / 2;
+            plaza.position.set(lx, 0.1, lz);
+            plaza.receiveShadow = true;
+            plaza.userData.v5kind = 'plaza';
+            scene.add(plaza);
+            v5counts.plazas++;
+            return;
+          }
+          // Two crosswalks per intersection: one for each road direction
+          for (let rot = 0; rot < 2; rot++) {
+            const cross = new THREE.Mesh(crossGeo, crossMat);
+            cross.rotation.x = -Math.PI / 2;
+            cross.rotation.z = rot * Math.PI / 2;
+            cross.position.set(lx, 0.1, lz);
+            cross.receiveShadow = true;
+            cross.userData.v5kind = 'crosswalk';
+            scene.add(cross);
+            v5counts.crosswalks++;
+          }
+        });
+      });
 
   // Buildings: one block per grid cell, 1-3 towers each, pastel facades.
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -688,24 +691,24 @@ export function buildCity(scene) {
   scene.add(board3Halo);
   v5counts.halos++;
 
-  // Vegetation system: optimized tree types for performance
-  // Palm trees (beach/tropical) - lower poly
+  // Vegetation system: multiple tree types for variety
+  // Palm trees (beach/tropical)
   const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9, metalness: 0.0 });
   const palmFrondMat = new THREE.MeshStandardMaterial({ color: 0x3f7a44, side: THREE.DoubleSide, roughness: 0.8, metalness: 0.0, alphaTest: 0.5 });
-  const palmTrunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 5); // 5 segments instead of 6
-  const palmFrondGeo = new THREE.ConeGeometry(3.4, 1.6, 5); // 5 segments instead of 7
+  const palmTrunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 6);
+  const palmFrondGeo = new THREE.ConeGeometry(3.4, 1.6, 7);
   
-  // Broadleaf trees (city parks, streets) - lower poly
+  // Broadleaf trees (city parks, streets)
   const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.95, metalness: 0.0 });
   const treeLeafMat = new THREE.MeshStandardMaterial({ color: 0x4a7a44, side: THREE.DoubleSide, roughness: 0.85, metalness: 0.0, alphaTest: 0.5 });
-  const treeTrunkGeo = new THREE.CylinderGeometry(0.4, 0.7, 5, 5); // 5 segments instead of 6
-  const treeLeafGeo = new THREE.SphereGeometry(3.5, 6, 5); // 6x5 instead of 8x6
+  const treeTrunkGeo = new THREE.CylinderGeometry(0.4, 0.7, 5, 6);
+  const treeLeafGeo = new THREE.SphereGeometry(3.5, 8, 6);
   
-  // Pine trees (northern areas) - lower poly
+  // Pine trees (northern areas)
   const pineTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.95, metalness: 0.0 });
   const pineLeafMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, side: THREE.DoubleSide, roughness: 0.9, metalness: 0.0 });
-  const pineTrunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 6, 5); // 5 segments instead of 6
-  const pineLeafGeo = new THREE.ConeGeometry(2.5, 4, 5); // 5 segments instead of 6
+  const pineTrunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 6, 6);
+  const pineLeafGeo = new THREE.ConeGeometry(2.5, 4, 6);
 
   function plantPalm(x, z, s = 1) {
     const g = new THREE.Group();
@@ -762,75 +765,75 @@ export function buildCity(scene) {
     colliders.push({ minX: x - 1, maxX: x + 1, minZ: z - 1, maxZ: z + 1 });
   }
 
-  // Palm trees along the beach - REDUCED
-    for (let z = -200; z <= 200; z += 36) plantPalm(216 + rng() * 10, z, 0.9 + rng() * 0.5);
-    for (let z = -200; z <= 200; z += 36) plantPalm(228 + rng() * 8, z, 0.8 + rng() * 0.4);
-    // Avenues with palms - REDUCED
-    for (let x = -180; x <= 180; x += 60) {
-      plantPalm(x + 9, -195, 1 + rng() * 0.3);
-      plantPalm(x - 9, 195, 1 + rng() * 0.3);
-    }
-    // Palm cluster around the pier - REDUCED
-    for (let i = 0; i < 6; i++) plantPalm(220 + rng() * 20, -80 + rng() * 80, 0.9 + rng() * 0.4);
+  // Palm trees along the beach - MORE DENSE
+  for (let z = -200; z <= 200; z += 18) plantPalm(216 + rng() * 10, z, 0.9 + rng() * 0.5);
+  for (let z = -200; z <= 200; z += 18) plantPalm(228 + rng() * 8, z, 0.8 + rng() * 0.4);
+  // Avenues with palms
+  for (let x = -180; x <= 180; x += 30) {
+    plantPalm(x + 9, -195, 1 + rng() * 0.3);
+    plantPalm(x - 9, 195, 1 + rng() * 0.3);
+  }
+  // Palm cluster around the pier
+  for (let i = 0; i < 12; i++) plantPalm(220 + rng() * 20, -80 + rng() * 80, 0.9 + rng() * 0.4);
   
-    // Broadleaf trees in city - ONLY ON MAJOR AVENUES, REDUCED DENSITY
-    const majorAvenues = [-180, -60, 60, 180]; // only 4 main avenues instead of all 7
-    for (const l of majorAvenues) {
-      for (let v = -160; v <= 160; v += 80) { // every 80m instead of 40m
-        plantTree(l + 12, v, 0.9 + rng() * 0.3);
-        plantTree(l - 12, v, 0.9 + rng() * 0.3);
-        plantTree(v, l + 12, 0.9 + rng() * 0.3);
-        plantTree(v, l - 12, 0.9 + rng() * 0.3);
-      }
+  // Broadleaf trees in city - along streets and in plazas
+  for (const l of lines) {
+    for (let v = -180; v <= 180; v += 40) {
+      // Trees on sidewalks (12m from road center)
+      plantTree(l + 12, v, 0.9 + rng() * 0.3);
+      plantTree(l - 12, v, 0.9 + rng() * 0.3);
+      plantTree(v, l + 12, 0.9 + rng() * 0.3);
+      plantTree(v, l - 12, 0.9 + rng() * 0.3);
     }
+  }
   
-    // Pine trees in northern areas - REDUCED
-    for (let i = 0; i < 15; i++) {
-      const x = -180 + rng() * 100;
-      const z = 50 + rng() * 120;
-      plantPine(x, z, 0.8 + rng() * 0.5);
+  // Pine trees in northern areas
+  for (let i = 0; i < 30; i++) {
+    const x = -180 + rng() * 100;
+    const z = 50 + rng() * 120;
+    plantPine(x, z, 0.8 + rng() * 0.5);
+  }
+  
+  // Park trees - central plaza areas
+  for (const [px, pz] of [[0, 0], [0, 60], [60, 0], [60, 60], [-60, -60], [-60, 60], [60, -60]]) {
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const r = 8 + rng() * 4;
+      plantTree(px + Math.sin(angle) * r, pz + Math.cos(angle) * r, 1 + rng() * 0.3);
     }
+  }
+
+  // Beach umbrellas: MORE
+  const umbrellaCols = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5, 0xff6b6b, 0x6bcb77];
+  const umbrellaPoleMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.8 });
+  const poleGeoU = new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6);
+  const canopyGeo = new THREE.ConeGeometry(2.2, 1.1, 8);
+  for (let i = 0; i < 28; i++) {
+    const ux = 218 + rng() * 25;
+    const uz = -190 + rng() * 380;
+    const pole = new THREE.Mesh(poleGeoU, umbrellaPoleMat);
+    pole.position.set(ux, 1.3, uz);
+    const canopy = new THREE.Mesh(canopyGeo, new THREE.MeshStandardMaterial({ color: umbrellaCols[i % umbrellaCols.length], side: THREE.DoubleSide, roughness: 0.8 }));
+    canopy.position.set(ux, 3, uz);
+    canopy.castShadow = true;
+    scene.add(pole, canopy);
+    colliders.push({ minX: ux - 0.3, maxX: ux + 0.3, minZ: uz - 0.3, maxZ: uz + 0.3 });
+  }
   
-    // Park trees - central plaza areas - REDUCED
-    for (const [px, pz] of [[0, 0], [60, 60], [-60, -60]]) { // only 3 plazas
-      for (let i = 0; i < 4; i++) { // 4 trees instead of 6
-        const angle = (i / 4) * Math.PI * 2;
-        const r = 8 + rng() * 4;
-        plantTree(px + Math.sin(angle) * r, pz + Math.cos(angle) * r, 1 + rng() * 0.3);
-      }
-    }
+  // Beach towels/chairs for more life
+  const towelColors = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5, 0xff6b6b];
+  for (let i = 0; i < 20; i++) {
+    const tx = 215 + rng() * 20;
+    const tz = -180 + rng() * 360;
+    const towel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.8), new THREE.MeshStandardMaterial({ color: towelColors[i % towelColors.length], roughness: 0.9, side: THREE.DoubleSide }));
+    towel.rotation.x = -Math.PI / 2;
+    towel.position.set(tx, 0.07, tz);
+    towel.rotation.z = (rng() - 0.5) * 1.0;
+    scene.add(towel);
+  }
   
-    // Beach umbrellas: REDUCED
-    const umbrellaCols = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5, 0xff6b6b, 0x6bcb77];
-    const umbrellaPoleMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.8 });
-    const poleGeoU = new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6);
-    const canopyGeo = new THREE.ConeGeometry(2.2, 1.1, 8);
-    for (let i = 0; i < 15; i++) {
-      const ux = 218 + rng() * 25;
-      const uz = -190 + rng() * 380;
-      const pole = new THREE.Mesh(poleGeoU, umbrellaPoleMat);
-      pole.position.set(ux, 1.3, uz);
-      const canopy = new THREE.Mesh(canopyGeo, new THREE.MeshStandardMaterial({ color: umbrellaCols[i % umbrellaCols.length], side: THREE.DoubleSide, roughness: 0.8 }));
-      canopy.position.set(ux, 3, uz);
-      canopy.castShadow = true;
-      scene.add(pole, canopy);
-      colliders.push({ minX: ux - 0.3, maxX: ux + 0.3, minZ: uz - 0.3, maxZ: uz + 0.3 });
-    }
-  
-    // Beach towels/chairs for more life - REDUCED
-    const towelColors = [0xc94f43, 0x2e7d6b, 0xf2c230, 0x4a6fa5, 0xff6b6b];
-    for (let i = 0; i < 10; i++) {
-      const tx = 215 + rng() * 20;
-      const tz = -180 + rng() * 360;
-      const towel = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.8), new THREE.MeshStandardMaterial({ color: towelColors[i % towelColors.length], roughness: 0.9, side: THREE.DoubleSide }));
-      towel.rotation.x = -Math.PI / 2;
-      towel.position.set(tx, 0.07, tz);
-      towel.rotation.z = (rng() - 0.5) * 1.0;
-      scene.add(towel);
-    }
-  
-    // Beach coolers - REDUCED
-    for (let i = 0; i < 5; i++) {
+  // Beach coolers
+  for (let i = 0; i < 10; i++) {
     const cx = 215 + rng() * 20;
     const cz = -180 + rng() * 360;
     const cooler = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), new THREE.MeshStandardMaterial({ color: 0x4a6fa5, roughness: 0.6 }));

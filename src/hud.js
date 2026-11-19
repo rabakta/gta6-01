@@ -73,8 +73,8 @@ const HUD_CSS = [
   // Phone pause menu
   '#phone-menu .phone-detail .back-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(74,111,165,0.2);border:1px solid #4a6fa5;border-radius:8px;color:#ffd34d;font-weight:700;cursor:pointer;margin-bottom:20px;transition:background .15s}',
   '#phone-menu .phone-detail .back-btn:hover{background:rgba(74,111,165,0.4)}',
-  // Context Prompts: dynamic hint panel (bottom-center)
-  '#context-prompts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;z-index:8;pointer-events:none}',
+  // Context Prompts: dynamic hint panel (bottom-left)
+  '#context-prompts{position:fixed;bottom:16px;left:16px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;z-index:8;pointer-events:none}',
   '#context-prompts .cp-row{display:flex;align-items:center;gap:10px;background:rgba(10,16,24,0.85);border:1px solid rgba(74,111,165,0.4);border-radius:6px;padding:6px 12px;color:#fff;font:13px Arial,sans-serif;white-space:nowrap;opacity:0;transform:translateY(10px);transition:opacity .2s,transform .2s}',
   '#context-prompts .cp-row.visible{opacity:1;transform:translateY(0)}',
   '#context-prompts .cp-key{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;background:rgba(255,211,77,0.2);border:1px solid #ffd34d;border-radius:4px;color:#ffd34d;font-weight:700;font-size:11px;padding:0 8px}',
