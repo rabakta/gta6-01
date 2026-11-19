@@ -64,6 +64,22 @@ export class CutsceneManager {
           duration: step.duration || 2.0,
           easing: step.easing || 'easeInOutCubic',
         });
+        // Wall-clock advance: the lerp's update() completion only runs on
+        // a frame, and frames can stall for tens of seconds (background
+        // tab, slow software GL) — without this the cutscene would hang
+        // on this step. The _advanced flag (shared with update()) makes
+        // exactly one next() fire however the step finishes; on a normal
+        // 60fps machine update() wins and this timeout is a no-op.
+        {
+          const stepRef = step;
+          setTimeout(() => {
+            if (this.current === stepRef && !stepRef._advanced) {
+              stepRef._advanced = true;
+              this.cameraLerp = null;
+              this.next();
+            }
+          }, (step.duration || 2.0) * 1000 + 350);
+        }
         break;
 
       case 'text':
@@ -92,7 +108,10 @@ export class CutsceneManager {
     }
   }
 
-  // Camera lerp with easing
+  // Camera lerp with easing. Wall-clock driven (performance.now), NOT
+  // accumulated frame dt: main.js clamps dt to 0.05s, so at a slow frame
+  // rate (software GL, low-end phones) a dt-driven lerp would take
+  // minutes of real time and mission cutscenes would never finish.
   startCameraLerp({ fromPos, fromTarget, toPos, toTarget, duration, easing }) {
     this.cameraLerp = {
       fromPos: fromPos.clone(),
@@ -102,6 +121,7 @@ export class CutsceneManager {
       duration,
       easing,
       elapsed: 0,
+      startWall: performance.now(),
     };
     // Disable player camera control during cutscene
     if (this.game.controls) this.game.controls.enabled = false;
@@ -280,9 +300,11 @@ export class CutsceneManager {
   update(dt) {
     if (!this.active) return;
 
-    // Update camera lerp
+    // Update camera lerp from wall-clock time (see startCameraLerp):
+    // dt is clamped to 0.05s in main.js, so accumulating it would stall
+    // the lerp for minutes at a slow frame rate.
     if (this.cameraLerp) {
-      this.cameraLerp.elapsed += dt;
+      this.cameraLerp.elapsed = (performance.now() - this.cameraLerp.startWall) / 1000;
       const t = clamp(this.cameraLerp.elapsed / this.cameraLerp.duration, 0, 1);
       const eased = this.ease(t, this.cameraLerp.easing);
 
@@ -294,16 +316,22 @@ export class CutsceneManager {
 
       if (t >= 1) {
         this.cameraLerp = null;
-        // If this was a camera step, advance after a brief pause
-        if (this.current && this.current.type === 'camera') {
+        // If this was a camera step, advance after a brief pause.
+        // _advanced is shared with the wall-clock timeout in
+        // executeStep: whichever finishes the step first claims it, so
+        // the step advances exactly once.
+        if (this.current && this.current.type === 'camera' && !this.current._advanced) {
+          this.current._advanced = true;
           setTimeout(() => this.next(), 300);
         }
       }
     }
 
-    // Update typewriter effect
+    // Update typewriter effect from wall-clock time (same reason as the
+    // camera lerp: dt is clamped, so accumulating it types far too slowly
+    // at a slow frame rate). typewriterStart is set in showText.
     if (this.textBox && this.typewriterText && this.typewriterIndex < this.typewriterText.length) {
-      this.typewriterTimer += dt * 1000;
+      this.typewriterTimer = performance.now() - this.typewriterStart;
       const targetIndex = Math.floor(this.typewriterTimer / this.typewriterSpeed);
       if (targetIndex > this.typewriterIndex) {
         this.typewriterIndex = Math.min(targetIndex, this.typewriterText.length);
