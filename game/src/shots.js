@@ -526,6 +526,440 @@ export function stageShot(game, shot) {
     // Time: midnight (max neon reflection)
     g.tod = 0.0; // 00:00
     g.updateTimeOfDay(0);
+  } else if (shot === 'chase-ambush-hero') {
+    // CHASE AMBUSH — Hero Low Angle (dramatic up-shot)
+    // Camera low, looking up at heli + Furia, roadblock looming large
+    const car = g.spawnCar('furia', 0xf2c230, -120, 0, Math.PI / 2);
+    g.enterCar(car);
+    car.speed = 50;
+    car.upgrades = { armor: 0, engine: 2, tires: 1 };
+    car.applyUpgrades(car.upgrades);
+    g.player.pos.copy(car.pos);
+    g.player.heading = car.heading;
+    g.player.camYaw = car.heading + Math.PI - 0.1;
+    g.player.camPitch = 0.55; // very low, looking up
+    g.player.camDist = 10; // closer, more imposing
+    g.keys.KeyW = true;
+    const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
+    for (const c of [...g.traffic.cars]) {
+      const dx = c.pos.x - car.pos.x, dz = c.pos.z - car.pos.z;
+      const ahead = dx * fx + dz * fz;
+      const side = Math.abs(dx * fz - dz * fx);
+      if (ahead > -20 && ahead < 120 && side < 6) {
+        g.scene.remove(c.mesh);
+        g.traffic.cars = g.traffic.cars.filter((x) => x !== c);
+      }
+    }
+    stagePolice(g, 4, 4);
+    const policeSpots = [[-35, 35], [35, 35], [0, -50], [0, -80]];
+    g.police.cars.forEach((c, i) => {
+      const spot = policeSpots[i] || [0, -100 - i * 20];
+      c.pos.set(car.pos.x + spot[0], 0, car.pos.z + spot[1]);
+      c.heading = Math.atan2(g.player.pos.x - c.pos.x, g.player.pos.z - c.pos.z);
+      c.speed = 42 + i * 3;
+      c.syncMesh();
+    });
+    if (g.police.heli) {
+      g.police.heli.position.set(car.pos.x + 10, 55, car.pos.z + 50); // higher, more dramatic
+      g.police.heli.rotation.y = Math.atan2(car.pos.x - g.police.heli.position.x, car.pos.z - g.police.heli.position.z);
+      if (g.police.heliLight) {
+        g.police.heliLight.target.position.set(car.pos.x, 0, car.pos.z + 15);
+        g.police.heliLight.target.updateMatrixWorld();
+      }
+    }
+    g.police.clearRoadblocks();
+    g.police.spawnRoadblock(g.player.pos, g.player.heading, 50);
+    g.traffic.spawn(4, { x: 0, z: -150 }, 60);
+    g.peds.spawn(6, { x: -80, z: 40 }, 50);
+    g.tod = 0.79;
+    g.updateTimeOfDay(0);
+  } else if (shot === 'chase-ambush-side') {
+    // CHASE AMBUSH — Side Drift Angle (motion blur emphasis)
+    // Camera perpendicular to motion, showing full car profile + flank police
+    const car = g.spawnCar('furia', 0xf2c230, -80, 0, Math.PI / 2);
+    g.enterCar(car);
+    car.speed = 50;
+    car.upgrades = { armor: 0, engine: 2, tires: 1 };
+    car.applyUpgrades(car.upgrades);
+    g.player.pos.copy(car.pos);
+    g.player.heading = car.heading;
+    g.player.camYaw = car.heading + Math.PI / 2; // 90 deg side view
+    g.player.camPitch = 0.2;
+    g.player.camDist = 16;
+    g.keys.KeyW = true;
+    const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
+    for (const c of [...g.traffic.cars]) {
+      const dx = c.pos.x - car.pos.x, dz = c.pos.z - car.pos.z;
+      const ahead = dx * fx + dz * fz;
+      const side = Math.abs(dx * fz - dz * fx);
+      if (ahead > -20 && ahead < 120 && side < 6) {
+        g.scene.remove(c.mesh);
+        g.traffic.cars = g.traffic.cars.filter((x) => x !== c);
+      }
+    }
+    stagePolice(g, 4, 4);
+    // Police repositioned for side view composition
+    const sideSpots = [[-40, 40], [40, 40], [-20, -40], [20, -40]];
+    g.police.cars.forEach((c, i) => {
+      const spot = sideSpots[i] || [0, -100 - i * 20];
+      c.pos.set(car.pos.x + spot[0], 0, car.pos.z + spot[1]);
+      c.heading = Math.atan2(g.player.pos.x - c.pos.x, g.player.pos.z - c.pos.z);
+      c.speed = 42 + i * 3;
+      c.syncMesh();
+    });
+    if (g.police.heli) {
+      g.police.heli.position.set(car.pos.x + 30, 45, car.pos.z + 30);
+      g.police.heli.rotation.y = Math.atan2(car.pos.x - g.police.heli.position.x, car.pos.z - g.police.heli.position.z);
+      if (g.police.heliLight) {
+        g.police.heliLight.target.position.set(car.pos.x, 0, car.pos.z + 20);
+        g.police.heliLight.target.updateMatrixWorld();
+      }
+    }
+    g.police.clearRoadblocks();
+    g.police.spawnRoadblock(g.player.pos, g.player.heading, 60);
+    g.tod = 0.79;
+    g.updateTimeOfDay(0);
+  } else if (shot === 'chase-ambush-rear') {
+    // CHASE AMBUSH — Rear Pursuit View (police POV)
+    // Camera behind police car, looking at Furia ahead
+    const car = g.spawnCar('furia', 0xf2c230, -60, 0, Math.PI / 2);
+    g.enterCar(car);
+    car.speed = 50;
+    car.upgrades = { armor: 0, engine: 2, tires: 1 };
+    car.applyUpgrades(car.upgrades);
+    // Add a police car as the "camera car" - we'll position camera behind it
+    const copCam = g.spawnCar('police', 0x1d2733, -110, 0, Math.PI / 2);
+    copCam.speed = 48;
+    g.scene.add(copCam.mesh);
+    g.player.pos.copy(copCam.pos);
+    g.player.heading = copCam.heading;
+    g.player.camYaw = copCam.heading + Math.PI;
+    g.player.camPitch = 0.15;
+    g.player.camDist = 8;
+    g.keys.KeyW = true;
+    // Clear lane
+    for (const c of [...g.traffic.cars]) {
+      const dx = c.pos.x - car.pos.x, dz = c.pos.z - car.pos.z;
+      const ahead = dx * fx + dz * fz;
+      const side = Math.abs(dx * fz - dz * fx);
+      if (ahead > -20 && ahead < 120 && side < 6) {
+        g.scene.remove(c.mesh);
+        g.traffic.cars = g.traffic.cars.filter((x) => x !== c);
+      }
+    }
+    stagePolice(g, 3, 4); // 3 more police
+    const rearSpots = [[-30, 20], [30, 20], [0, -60]];
+    g.police.cars.forEach((c, i) => {
+      const spot = rearSpots[i] || [0, -80];
+      c.pos.set(car.pos.x + spot[0], 0, car.pos.z + spot[1]);
+      c.heading = Math.atan2(g.player.pos.x - c.pos.x, g.player.pos.z - c.pos.z);
+      c.speed = 42 + i * 3;
+      c.syncMesh();
+    })
+    if (g.police.heli) {
+      g.police.heli.position.set(car.pos.x + 10, 45, car.pos.z + 60);
+      if (g.police.heliLight) {
+        g.police.heliLight.target.position.set(car.pos.x, 0, car.pos.z + 20);
+        g.police.heliLight.target.updateMatrixWorld();
+      }
+    }
+    g.police.clearRoadblocks();
+    g.police.spawnRoadblock(car.pos, car.heading, 50);
+    g.tod = 0.79;
+    g.updateTimeOfDay(0);
+  } else if (shot === 'gang-war-wide') {
+    // GANG WAR — Wide Cinematic (establishing shot)
+    // Pull back, show full semicircle, Rio small but centered
+    const car = g.spawnCar('carguero', 0x8e2f32, 20, -20, Math.PI * 0.25);
+    g.enterCar(car);
+    car.speed = 0;
+    g.player.pos.set(car.pos.x - 2.5, 1.6, car.pos.z + 1.8);
+    g.player.heading = Math.PI * 0.25;
+    g.player.camYaw = Math.PI * 0.25 + Math.PI;
+    g.player.camPitch = 0.25;
+    g.player.camDist = 18; // wide
+    g.save.currentWeapon = 'smg';
+    g.save.weapons.smg = { owned: true, ammo: 32 };
+    const redVipers = GANGS.find(g => g.name === 'Red Vipers');
+    const blueSyndicate = GANGS.find(g => g.name === 'Blue Syndicate');
+    const gangPositions = [
+      { x: 50, z: 25, gang: redVipers }, { x: 65, z: 10, gang: redVipers },
+      { x: 75, z: -10, gang: redVipers }, { x: 65, z: -30, gang: redVipers },
+      { x: 20, z: -55, gang: blueSyndicate }, { x: 5, z: -65, gang: blueSyndicate },
+      { x: -15, z: -70, gang: blueSyndicate }, { x: -30, z: -65, gang: blueSyndicate },
+    ];
+    for (const gp of gangPositions) if (gp.gang) g.peds.spawnGang(gp.gang, 1, gp.x, gp.z);
+    const gangPeds = g.peds.peds.filter(p => p.role === 'gang' && !p.dead);
+    gangPositions.forEach((gp, i) => {
+      if (gangPeds[i]) {
+        gangPeds[i].pos.set(gp.x, 0, gp.z);
+        gangPeds[i].heading = Math.atan2(g.player.pos.x - gp.x, g.player.pos.z - gp.z);
+        gangPeds[i].armed = true; gangPeds[i].aggro = 50;
+        gangPeds[i].mesh.position.set(gp.x, 0, gp.z);
+      }
+    });
+    g.particles.flame({ x: 40, y: 3, z: 0 }, 4);
+    g.particles.smoke({ x: 40, y: 2.5, z: 0 }, 3);
+    const cop = g.spawnCar('police', 0x1d2733, -80, 80, -Math.PI * 0.75);
+    cop.speed = 30; cop.ai = { axis: 'x', dir: 1, targetSpeed: 32, wait: 0 };
+    g.scene.add(cop.mesh); g.traffic.cars.push(cop);
+    g.particles.smoke({ x: -50, y: 0.5, z: 50 }, 5);
+    g.particles.sparks({ x: -50, y: 0.5, z: 50 }, 8);
+    g.traffic.spawn(3, { x: -100, z: -100 }, 60);
+    g.tod = 0.92; g.updateTimeOfDay(0);
+  } else if (shot === 'gang-war-dutch') {
+    // GANG WAR — Dutch Angle (tension, chaos)
+    // Tilted horizon, close over-shoulder, immediate threat
+    const car = g.spawnCar('carguero', 0x8e2f32, 20, -20, Math.PI * 0.25);
+    g.enterCar(car);
+    car.speed = 0;
+    g.player.pos.set(car.pos.x - 2.5, 1.6, car.pos.z + 1.8);
+    g.player.heading = Math.PI * 0.25;
+    g.player.camYaw = Math.PI * 0.25 + Math.PI * 0.9;
+    g.player.camPitch = 0.35;
+    g.player.camDist = 6; // tighter
+    // Dutch angle via camera roll (z rotation)
+    g.player.mesh.rotation.z = 0.15; // ~8.5 deg tilt
+    g.save.currentWeapon = 'smg';
+    g.save.weapons.smg = { owned: true, ammo: 32 };
+    const redVipers = GANGS.find(g => g.name === 'Red Vipers');
+    const blueSyndicate = GANGS.find(g => g.name === 'Blue Syndicate');
+    const gangPositions = [
+      { x: 45, z: 15, gang: redVipers }, { x: 55, z: 5, gang: redVipers },
+      { x: 60, z: -10, gang: redVipers }, { x: 55, z: -25, gang: redVipers },
+      { x: 15, z: -45, gang: blueSyndicate }, { x: 5, z: -55, gang: blueSyndicate },
+      { x: -10, z: -60, gang: blueSyndicate }, { x: -25, z: -55, gang: blueSyndicate },
+    ];
+    for (const gp of gangPositions) if (gp.gang) g.peds.spawnGang(gp.gang, 1, gp.x, gp.z);
+    const gangPeds = g.peds.peds.filter(p => p.role === 'gang' && !p.dead);
+    gangPositions.forEach((gp, i) => {
+      if (gangPeds[i]) {
+        gangPeds[i].pos.set(gp.x, 0, gp.z);
+        gangPeds[i].heading = Math.atan2(g.player.pos.x - gp.x, g.player.pos.z - gp.z);
+        gangPeds[i].armed = true; gangPeds[i].aggro = 50;
+        gangPeds[i].mesh.position.set(gp.x, 0, gp.z);
+      }
+    });
+    g.particles.flame({ x: 35, y: 2.5, z: -5 }, 3);
+    g.particles.smoke({ x: 35, y: 2, z: -5 }, 2);
+    const cop = g.spawnCar('police', 0x1d2733, -60, 60, -Math.PI * 0.75);
+    cop.speed = 28; cop.ai = { axis: 'x', dir: 1, targetSpeed: 30, wait: 0 };
+    g.scene.add(cop.mesh); g.traffic.cars.push(cop);
+    g.particles.smoke({ x: -40, y: 0.5, z: 40 }, 4);
+    g.particles.sparks({ x: -40, y: 0.5, z: 40 }, 6);
+    g.traffic.spawn(3, { x: -80, z: -80 }, 50);
+    g.tod = 0.92; g.updateTimeOfDay(0);
+  } else if (shot === 'gang-war-overhead') {
+    // GANG WAR — Overhead/Top-Down (tactical view)
+    // Shows formation, semicircle geometry, Rio at center
+    const car = g.spawnCar('carguero', 0x8e2f32, 20, -20, Math.PI * 0.25);
+    g.enterCar(car);
+    car.speed = 0;
+    g.player.pos.set(car.pos.x - 2.5, 1.6, car.pos.z + 1.8);
+    g.player.heading = Math.PI * 0.25;
+    g.player.camYaw = Math.PI * 0.25 + Math.PI;
+    g.player.camPitch = 0.05; // almost straight down
+    g.player.camDist = 35; // high up
+    g.save.currentWeapon = 'smg';
+    g.save.weapons.smg = { owned: true, ammo: 32 };
+    const redVipers = GANGS.find(g => g.name === 'Red Vipers');
+    const blueSyndicate = GANGS.find(g => g.name === 'Blue Syndicate');
+    const gangPositions = [
+      { x: 45, z: 15, gang: redVipers }, { x: 55, z: 5, gang: redVipers },
+      { x: 60, z: -10, gang: redVipers }, { x: 55, z: -25, gang: redVipers },
+      { x: 15, z: -45, gang: blueSyndicate }, { x: 5, z: -55, gang: blueSyndicate },
+      { x: -10, z: -60, gang: blueSyndicate }, { x: -25, z: -55, gang: blueSyndicate },
+    ];
+    for (const gp of gangPositions) if (gp.gang) g.peds.spawnGang(gp.gang, 1, gp.x, gp.z);
+    const gangPeds = g.peds.peds.filter(p => p.role === 'gang' && !p.dead);
+    gangPositions.forEach((gp, i) => {
+      if (gangPeds[i]) {
+        gangPeds[i].pos.set(gp.x, 0, gp.z);
+        gangPeds[i].heading = Math.atan2(g.player.pos.x - gp.x, g.player.pos.z - gp.z);
+        gangPeds[i].armed = true; gangPeds[i].aggro = 50;
+        gangPeds[i].mesh.position.set(gp.x, 0, gp.z);
+      }
+    });
+    g.particles.flame({ x: 35, y: 2.5, z: -5 }, 3);
+    g.particles.smoke({ x: 35, y: 2, z: -5 }, 2);
+    g.tod = 0.92; g.updateTimeOfDay(0);
+  } else if (shot === 'heist-getaway-side') {
+    // HEIST GETAWAY — Side Convoy View (formation emphasis)
+    // Camera parallel to road, all 3 cars visible in line
+    const furia = g.spawnCar('furia', 0xf2c230, -120, 0, Math.PI / 2);
+    g.enterCar(furia);
+    furia.speed = 42;
+    furia.upgrades = { armor: 1, engine: 2, tires: 2 };
+    furia.applyUpgrades(furia.upgrades);
+    g.player.pos.set(furia.pos.x + 20, 4, furia.pos.z); // offset to side
+    g.player.heading = Math.PI / 2;
+    g.player.camYaw = Math.PI; // looking perpendicular to convoy
+    g.player.camPitch = 0.15;
+    g.player.camDist = 22;
+    g.keys.KeyW = true;
+    const vento = g.spawnCar('vento', 0x2b3a55, -120, -7, Math.PI / 2);
+    vento.speed = 42; vento.kind = 'mission'; g.scene.add(vento.mesh);
+    const carguero = g.spawnCar('carguero', 0x8e2f32, -120, 7, Math.PI / 2);
+    carguero.speed = 42; carguero.kind = 'mission'; g.scene.add(carguero.mesh);
+    [vento, carguero].forEach(c => { c.ai = { axis: 'z', dir: 1, targetSpeed: 42, wait: 0, convoy: true, lead: furia }; });
+    if (!g.police.heli) g.police.spawnHeli();
+    if (g.police.heli) {
+      g.police.heli.position.set(-120, 60, 40);
+      g.police.heli.rotation.y = -Math.PI / 2;
+      if (g.police.heliLight) {
+        g.police.heliLight.target.position.set(-120, 0, 10);
+        g.police.heliLight.target.updateMatrixWorld(); g.police.heliLight.intensity = 1200;
+      }
+    }
+    g.police.clearRoadblocks();
+    const spikePos = { x: -100, z: 55 };
+    const spikeGeo = new THREE.PlaneGeometry(14, 0.8);
+    const spikeMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.3, metalness: 0.7, emissive: 0x333333, emissiveIntensity: 0.3 });
+    const spikeStrip = new THREE.Mesh(spikeGeo, spikeMat);
+    spikeStrip.rotation.x = -Math.PI / 2; spikeStrip.position.set(spikePos.x, 0.09, spikePos.z); g.scene.add(spikeStrip);
+    g.traffic.spawn(3, { x: -150, z: -100 }, 60); g.peds.spawn(4, { x: -120, z: 20 }, 40);
+    g.tod = 0.95; g.updateTimeOfDay(0);
+  } else if (shot === 'heist-getaway-aerial') {
+    // HEIST GETAWAY — Aerial Top-Down (heli POV)
+    // Shows convoy from above, spike strip ahead, city walls closing
+    const furia = g.spawnCar('furia', 0xf2c230, -100, 0, Math.PI / 2);
+    g.enterCar(furia);
+    furia.speed = 42;
+    furia.upgrades = { armor: 1, engine: 2, tires: 2 };
+    furia.applyUpgrades(furia.upgrades);
+    g.player.pos.copy(furia.pos);
+    g.player.heading = Math.PI / 2;
+    g.player.camYaw = Math.PI / 2 + Math.PI;
+    g.player.camPitch = 0.02; // nearly straight down
+    g.player.camDist = 50;
+    g.keys.KeyW = true;
+    const vento = g.spawnCar('vento', 0x2b3a55, -100, -7, Math.PI / 2);
+    vento.speed = 42; vento.kind = 'mission'; g.scene.add(vento.mesh);
+    const carguero = g.spawnCar('carguero', 0x8e2f32, -100, 7, Math.PI / 2);
+    carguero.speed = 42; carguero.kind = 'mission'; g.scene.add(carguero.mesh);
+    [vento, carguero].forEach(c => { c.ai = { axis: 'z', dir: 1, targetSpeed: 42, wait: 0, convoy: true, lead: furia }; });
+    if (!g.police.heli) g.police.spawnHeli();
+    g.police.clearRoadblocks();
+    const spikePos = { x: -80, z: 55 };
+    const spikeGeo = new THREE.PlaneGeometry(14, 0.8);
+    const spikeMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.3, metalness: 0.7, emissive: 0x333333, emissiveIntensity: 0.3 });
+    const spikeStrip = new THREE.Mesh(spikeGeo, spikeMat);
+    spikeStrip.rotation.x = -Math.PI / 2; spikeStrip.position.set(spikePos.x, 0.09, spikePos.z); g.scene.add(spikeStrip);
+    g.traffic.spawn(3, { x: -150, z: -100 }, 60); g.peds.spawn(4, { x: -120, z: 20 }, 40);
+    g.tod = 0.95; g.updateTimeOfDay(0);
+  } else if (shot === 'heist-getaway-rear') {
+    // HEIST GETAWAY — Rear Formation (pursuit view)
+    // Camera behind Carguero, seeing Furia + Vento ahead, heli beam behind
+    const furia = g.spawnCar('furia', 0xf2c230, -60, 0, Math.PI / 2);
+    furia.speed = 42;
+    furia.upgrades = { armor: 1, engine: 2, tires: 2 };
+    furia.applyUpgrades(furia.upgrades);
+    const vento = g.spawnCar('vento', 0x2b3a55, -60, -7, Math.PI / 2);
+    vento.speed = 42; vento.kind = 'mission'; g.scene.add(vento.mesh);
+    const carguero = g.spawnCar('carguero', 0x8e2f32, -60, 7, Math.PI / 2);
+    g.enterCar(carguero); // player in rear car
+    carguero.speed = 42; carguero.kind = 'mission';
+    g.player.pos.copy(carguero.pos); g.player.heading = Math.PI / 2;
+    g.player.camYaw = Math.PI / 2 + Math.PI; g.player.camPitch = 0.2; g.player.camDist = 10;
+    g.keys.KeyW = true;
+    [vento, furia].forEach(c => { c.ai = { axis: 'z', dir: 1, targetSpeed: 42, wait: 0, convoy: true, lead: carguero }; });
+    if (!g.police.heli) g.police.spawnHeli();
+    if (g.police.heli) {
+      g.police.heli.position.set(-60, 55, -40); // behind convoy
+      g.police.heli.rotation.y = Math.PI / 2;
+      if (g.police.heliLight) {
+        g.police.heliLight.target.position.set(-60, 0, -10);
+        g.police.heliLight.target.updateMatrixWorld(); g.police.heliLight.intensity = 1200;
+      }
+    }
+    g.police.clearRoadblocks();
+    g.tod = 0.95; g.updateTimeOfDay(0);
+  } else if (shot === 'midnight-grand-prix-pole') {
+    // MIDNIGHT GRAND PRIX — Pole Position (driver POV)
+    // Low, cockpit-adjacent, start lights filling view, neon reflection on hood
+    const cars = []; const startX = -180; const startZ = 100;
+    const colors = [0xf2c230, 0xff4444, 0x44ff44, 0x4488ff, 0xff8844, 0xff44ff, 0x88ff44, 0xffff44];
+    const types = ['furia', 'vento', 'furia', 'vento', 'furia', 'vento', 'furia', 'vento'];
+    for (let i = 0; i < 8; i++) {
+      const car = g.spawnCar(types[i], colors[i], startX, startZ + (i - 3.5) * 5.5, Math.PI);
+      car.speed = 0; car.upgrades = { armor: 0, engine: 2, tires: 2 }; car.applyUpgrades(car.upgrades);
+      if (i % 2 === 0) g.particles.smoke({ x: car.pos.x, y: 0.4, z: car.pos.z }, 2);
+      cars.push(car); g.scene.add(car.mesh);
+    }
+    g.enterCar(cars[3]); // pole position (index 3 = center-left)
+    g.player.pos.set(cars[3].pos.x, 1.2, cars[3].pos.z + 1.5); // hood level
+    g.player.heading = Math.PI; g.player.camYaw = Math.PI; g.player.camPitch = 0.35; g.player.camDist = 5;
+    const lightGeo = new THREE.SphereGeometry(0.6, 16, 12);
+    for (let i = 0; i < 5; i++) {
+      const light = new THREE.Mesh(lightGeo, new THREE.MeshBasicMaterial({ color: i < 4 ? 0xff2222 : 0x22ff22, transparent: true, opacity: 1 }));
+      light.position.set(startX - 8, 4.5, startZ + (i - 2) * 5.5); g.scene.add(light);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: i < 4 ? 0xff2222 : 0x22ff22, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.position.copy(light.position); glow.scale.setScalar(3); g.scene.add(glow);
+    }
+    for (let i = 0; i < 3; i++) {
+      const ringGeo = new THREE.RingGeometry(10, 11, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+      const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.x = -Math.PI / 2; ring.position.set(startX, 0.1, startZ + 40 + i * 35); g.scene.add(ring);
+    }
+    g.traffic.cars.forEach(c => g.scene.remove(c.mesh)); g.traffic.cars = [];
+    g.tod = 0.0; g.updateTimeOfDay(0);
+  } else if (shot === 'midnight-grand-prix-wide') {
+    // MIDNIGHT GRAND PRIX — Wide Grid (full 8-car symmetry)
+    // High angle, centered, neon Coral Row stretching both ways
+    const cars = []; const startX = -180; const startZ = 100;
+    const colors = [0xf2c230, 0xff4444, 0x44ff44, 0x4488ff, 0xff8844, 0xff44ff, 0x88ff44, 0xffff44];
+    const types = ['furia', 'vento', 'furia', 'vento', 'furia', 'vento', 'furia', 'vento'];
+    for (let i = 0; i < 8; i++) {
+      const car = g.spawnCar(types[i], colors[i], startX, startZ + (i - 3.5) * 5.5, Math.PI);
+      car.speed = 0; car.upgrades = { armor: 0, engine: 2, tires: 2 }; car.applyUpgrades(car.upgrades);
+      if (i % 2 === 0) g.particles.smoke({ x: car.pos.x, y: 0.4, z: car.pos.z }, 2);
+      cars.push(car); g.scene.add(car.mesh);
+    }
+    g.enterCar(cars[3]);
+    g.player.pos.set(startX + 10, 15, startZ + 20); // elevated corner
+    g.player.heading = Math.PI; g.player.camYaw = Math.PI * 0.8; g.player.camPitch = 0.1; g.player.camDist = 28;
+    const lightGeo = new THREE.SphereGeometry(0.6, 16, 12);
+    for (let i = 0; i < 5; i++) {
+      const light = new THREE.Mesh(lightGeo, new THREE.MeshBasicMaterial({ color: i < 4 ? 0xff2222 : 0x22ff22, transparent: true, opacity: 1 }));
+      light.position.set(startX - 8, 4.5, startZ + (i - 2) * 5.5); g.scene.add(light);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: i < 4 ? 0xff2222 : 0x22ff22, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.position.copy(light.position); glow.scale.setScalar(2.5); g.scene.add(glow);
+    }
+    for (let i = 0; i < 3; i++) {
+      const ringGeo = new THREE.RingGeometry(10, 11, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.4, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+      const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.x = -Math.PI / 2; ring.position.set(startX, 0.1, startZ + 40 + i * 35); g.scene.add(ring);
+    }
+    for (let side of [-1, 1]) { for (let i = 0; i < 12; i++) {
+      const ped = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1.4, 4, 8), new THREE.MeshBasicMaterial({ color: 0x1a1a2e }));
+      ped.position.set(startX + side * 14, 0.7, startZ + (i - 5.5) * 5.5); ped.rotation.y = -side * Math.PI / 2; g.scene.add(ped);
+    }}
+    g.traffic.cars.forEach(c => g.scene.remove(c.mesh)); g.traffic.cars = [];
+    g.tod = 0.0; g.updateTimeOfDay(0);
+  } else if (shot === 'midnight-grand-prix-neon') {
+    // MIDNIGHT GRAND PRIX — Neon Reflection Close-Up
+    // Extreme low angle, clearcoat reflecting Coral Row signs, start light bokeh
+    const cars = []; const startX = -180; const startZ = 100;
+    const colors = [0xf2c230, 0xff4444, 0x44ff44, 0x4488ff, 0xff8844, 0xff44ff, 0x88ff44, 0xffff44];
+    const types = ['furia', 'vento', 'furia', 'vento', 'furia', 'vento', 'furia', 'vento'];
+    for (let i = 0; i < 8; i++) {
+      const car = g.spawnCar(types[i], colors[i], startX, startZ + (i - 3.5) * 5.5, Math.PI);
+      car.speed = 0; car.upgrades = { armor: 0, engine: 2, tires: 2 }; car.applyUpgrades(car.upgrades);
+      if (i % 2 === 0) g.particles.smoke({ x: car.pos.x, y: 0.4, z: car.pos.z }, 2);
+      cars.push(car); g.scene.add(car.mesh);
+    }
+    g.enterCar(cars[3]);
+    g.player.pos.set(cars[3].pos.x - 1.5, 0.3, cars[3].pos.z + 3); // ground level, side
+    g.player.heading = Math.PI; g.player.camYaw = Math.PI * 1.1; g.player.camPitch = 0.6; g.player.camDist = 3;
+    const lightGeo = new THREE.SphereGeometry(0.6, 16, 12);
+    for (let i = 0; i < 5; i++) {
+      const light = new THREE.Mesh(lightGeo, new THREE.MeshBasicMaterial({ color: i < 4 ? 0xff2222 : 0x22ff22, transparent: true, opacity: 1 }));
+      light.position.set(startX - 8, 4.5, startZ + (i - 2) * 5.5); g.scene.add(light);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: i < 4 ? 0xff2222 : 0x22ff22, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.position.copy(light.position); glow.scale.setScalar(4); g.scene.add(glow);
+    }
+    g.traffic.cars.forEach(c => g.scene.remove(c.mesh)); g.traffic.cars = [];
+    g.tod = 0.0; g.updateTimeOfDay(0);
   }
   // Let the world settle for a beat so the first rendered frame is composed.
   g.warmupFrames = 30;
