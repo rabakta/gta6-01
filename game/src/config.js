@@ -38,17 +38,11 @@ export const PALETTE = {
   sea: 0x14607f,
 };
 
-// Camera + world clock tuning, so feel changes land in one place.
+// Camera and wanted tuning.
 export const CAMERA_FOV = 62;
-export const CLOCK_RATE = 12; // game seconds per real second (a game minute every 5 s)
 export const WANTED_MAX = 5;
-export const HELI_MIN_WANTED = 3; // stars before the BCPD helicopter lifts off
-export const WANTED_DECAY_SECONDS = 14; // out of sight this long loses a star
 export const ROADBLOCK_MIN_WANTED = 4; // stars before the BCPD sets roadblocks
 export const ROADBLOCK_COUNT = 2; // how many blocks go up at once
-
-// How crowded the streets stay around the player.
-export const POPULATION = { traffic: 10, peds: 16 };
 
 export const SAVE_KEY = 'brisabay-save-v1';
 
@@ -92,7 +86,6 @@ export const UPGRADES = {
     handlingBonus: 0.12,
   },
 };
-export const UPGRADE_MAX_LEVEL = 2;
 
 // ---------------------------------------------------------------------------
 // World pickups: glowing crosses and shields at fixed spots. `respawn` is
@@ -103,6 +96,10 @@ export const PICKUPS = [
   { kind: 'armor',  x: 180,  z: -140, respawn: 45 },
   { kind: 'health', x: 228,  z: 40,  respawn: 45 },
   { kind: 'armor',  x: -150, z: 140, respawn: 45 },
+  // Free guns on the street: a pistol by the safehouse, a Boomstick at
+  // the docks. Walk over one and it is yours — no shop trip needed.
+  { kind: 'weapon', weapon: 'pistol', x: -132, z: 128, respawn: 90 },
+  { kind: 'weapon', weapon: 'shotgun', x: 180, z: -120, respawn: 120 },
 ];
 export const PICKUP_HEALTH = 40;
 export const PICKUP_ARMOR = 50;
@@ -116,6 +113,13 @@ export const WEAPONS = {
   smg:     { name: 'Vespa SMG', price: 900,  damage: 15, rate: 0.09, range: 55,  auto: true,  ammo: 32,       spread: 0.05 },
   shotgun: { name: 'Boomstick', price: 1400, damage: 13, rate: 0.85, range: 26,  auto: false, ammo: 6,        spread: 0.09, pellets: 6 },
 };
+
+// Enemy gangs: turf rectangles, hideout centres, colours. Members spawn
+// in their turf, attack Rio on sight there, and send more men when hit.
+export const GANGS = [
+  { name: 'VEX BOYS', color: 0xd21f2b, x0: -210, z0: -210, x1: -60, z1: -60, hx: -150, hz: -150 },
+  { name: 'CORAL KINGS', color: 0x2e7d6b, x0: 60, z0: 60, x1: 210, z1: 210, hx: 150, hz: 150 },
+];
 
 // ---------------------------------------------------------------------------
 // Shops on the map corners. `kind` picks the stock list in main.js.
@@ -249,8 +253,6 @@ export const BUS_STOPS = [
   { x: 120, z: -60, name: 'North Market' },
   { x: 60, z: 120, name: 'Beachfront South' },
 ];
-// Where a waiting ped stands, relative to the stop's road point.
-export const BUS_STOP_WAIT = { dx: 9, dz: 0 };
 
 // Street vendors: fixed stalls on the sidewalk (9 m off a road line).
 // The ped behind the stall never leaves it — unless something scares them.

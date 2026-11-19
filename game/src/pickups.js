@@ -1,11 +1,9 @@
-// BRISA BAY — world pickups. Glowing health crosses and armour diamonds sit
-// at fixed spots around the city (hospital, docks, beach, safehouse). Walk
-// or drive over one to take it; it comes back after its respawn time. A
-// full-health Rio leaves a health cross alone, so the pickup stays on the
-// map for when he needs it. (The collectible packages are a separate system
-// in collectibles.js: one-offs that never respawn.)
+// BRISA BAY — world pickups. Glowing health crosses, armour diamonds and
+// free guns at fixed spots. Walk or drive over one to take it; it comes
+// back after its respawn time. Full health leaves a cross alone; a full
+// gun leaves a weapon alone. (Packages are separate: one-offs, no respawn.)
 import * as THREE from 'three';
-import { PICKUPS, PICKUP_HEALTH, PICKUP_ARMOR } from './config.js';
+import { PICKUPS, PICKUP_HEALTH, PICKUP_ARMOR, WEAPONS } from './config.js';
 import { glowTexture } from './textures.js';
 import { dist2 } from './utils.js';
 
@@ -16,7 +14,7 @@ export class PickupManager {
     const glowTex = glowTexture();
     for (const def of PICKUPS) {
       const group = new THREE.Group();
-      const color = def.kind === 'health' ? 0x2fd47a : 0x4da3ff;
+      const color = def.kind === 'health' ? 0x2fd47a : def.kind === 'weapon' ? 0xff8c42 : 0x4da3ff;
       let mesh;
       if (def.kind === 'health') {
         // Green cross: two bars.
@@ -25,6 +23,14 @@ export class PickupManager {
         const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.4, 0.4), mat);
         mesh = new THREE.Group();
         mesh.add(h1, h2);
+      } else if (def.kind === 'weapon') {
+        // A gun on the ground: dark body + barrel, reads as a weapon.
+        const mat = new THREE.MeshBasicMaterial({ color: 0x2a2d33 });
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.35, 0.3), mat);
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 0.22), mat);
+        b2.position.set(0.85, 0.05, 0);
+        mesh = new THREE.Group();
+        mesh.add(b1, b2);
       } else {
         // Blue diamond: an octahedron, reads as a shield at a glance.
         mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.85), new THREE.MeshBasicMaterial({ color }));
@@ -65,7 +71,14 @@ export class PickupManager {
       item.mesh.rotation.y += dt * 1.5;
       item.glow.material.opacity = 0.45 + Math.sin(t * 2 + item.phase) * 0.15;
       if (dist2(playerPos.x, playerPos.z, item.x, item.z) < 2.4) {
-        if (item.kind === 'health') {
+        if (item.kind === 'weapon') {
+          const w = WEAPONS[item.weapon];
+          const owned = game.save.weapons[item.weapon];
+          if (owned && owned.ammo >= w.ammo) continue; // full gun: leave it
+          game.save.weapons[item.weapon] = { owned: true, ammo: w.ammo };
+          game.save.currentWeapon = item.weapon;
+          game.notify('Picked up the ' + w.name + ' — CLICK to shoot, 1/2/3 to switch.');
+        } else if (item.kind === 'health') {
           if (game.player.health >= 100) continue; // full health: leave it
           game.player.heal(PICKUP_HEALTH);
           game.notify('First aid +' + PICKUP_HEALTH + ' health.');

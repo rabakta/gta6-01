@@ -1,14 +1,7 @@
-// BRISA BAY — procedural textures. Every surface is painted on a canvas
-// at load time, so the game ships no image files and loads nothing over the
-// network. Seeded canvases keep the city identical on every run. A glow
-// sprite for lamps and pickups, neon shop signs, and the striped roadblock
-// barrier face. The taxi beacons and the collectible parcels reuse the same
-// glow sprite, so the new systems add no new texture code. Facades are
-// painted per storey (floors/cols matched to the building, so tall towers
-// stop stretching six window rows), windows get a recessed frame, sill
-// and painted balcony, and every facade paints a second canvas — an
-// emissive map — so its lit windows actually glow at sunset instead of
-// being yellow paint.
+// BRISA BAY — procedural textures: every surface is painted on a canvas
+// at load, so the game ships no image files. Seeded canvases keep the
+// city identical every run. Facades are painted per storey with a second
+// emissive canvas, so lit windows glow at sunset instead of yellow paint.
 import * as THREE from 'three';
 import { makeCanvas, mulberry32, pick } from './utils.js';
 
@@ -66,7 +59,7 @@ export function facadeTexture(base, seed, floors = 6, cols = 4) {
       // Recess: dark frame, then glass, then a sun glint and a sill.
       g.fillStyle = '#1a1e24';
       g.fillRect(x - 2, y - 2, w + 4, h + 4);
-      g.fillStyle = lit ? '#ffd98a' : (rng() < 0.5 ? '#3d5a73' : '#2b3542');
+      g.fillStyle = lit ? pick(rng, ['#ffd98a', '#ffb45e', '#ffe9b8']) : pick(rng, ['#3d5a73', '#2b3542', '#4a6b52']);
       g.fillRect(x, y, w, h);
       g.fillStyle = 'rgba(255,255,255,0.25)';
       g.fillRect(x, y, w, 3);
@@ -122,6 +115,7 @@ export function pavementTexture() {
   const g = c.getContext('2d');
   g.fillStyle = '#8f8578';
   g.fillRect(0, 0, 128, 128);
+  speckle(g, mulberry32(9), 128, 128, 250, 'rgba(255,255,255,0.05)', 'rgba(0,0,0,0.08)');
   g.strokeStyle = 'rgba(0,0,0,0.25)';
   g.lineWidth = 2;
   for (let i = 0; i <= 4; i++) {

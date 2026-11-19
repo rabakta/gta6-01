@@ -1,20 +1,10 @@
-// BRISA BAY — the city itself: roads, buildings, beach, sea, palms,
-// lamps, billboards and the bridge. Everything is built procedurally from
-// one seed, so the map is identical on every run and the screenshots can be
-// re-staged exactly. A visible sun disc with a glow, a glittering sea with
-// a foam edge, a lighthouse with a sweeping beam, a pier, neon signs on
-// the shops, glowing street lamps and two more billboards. The collectible
-// packages and taxi fares place themselves on the road lines and the open
-// beach this city builds, so no map change was needed. The graphics round
-// — facades are painted per storey (no more stretched windows), lit windows
-// glow through an emissive map, towers get parapets and varied roof colours,
-// and the ground gets crosswalks, plaza tiles, kerbs and a wet-sand band,
-// so the streets stop reading as flat colour. The building loop consumes
-// its seeded rng in exactly the earlier order — no new rng() calls inside
-// it — so every cell keeps its layout and no mission step can get buried
-// by a reshuffle.
+// BRISA BAY — the city: roads, buildings, beach, sea, palms, lamps,
+// billboards, bridge. One seed, so the map is identical every run.
+// Facades per storey, lit windows, parapets, varied roofs; ground detail
+// (crosswalks, plazas, kerbs, wet sand). The building loop consumes its
+// seeded rng in exactly the earlier order — no new rng() calls inside it.
 import * as THREE from 'three';
-import { CITY, PALETTE, SHOPS, BUS_STOPS, VENDORS } from './config.js';
+import { CITY, PALETTE, SHOPS, BUS_STOPS, VENDORS, GANGS } from './config.js';
 import { mulberry32, pick } from './utils.js';
 import { facadeTexture, roadTexture, pavementTexture, sandTexture, signTexture, billboardTexture, roofTexture, glowTexture, neonSignTexture, crosswalkTexture, plazaTexture, kerbTexture, wetSandTexture } from './textures.js';
 
@@ -98,17 +88,19 @@ export function buildCity(scene) {
     v5counts,
   };
 
-  // Sky: warm sunset gradient dome + fog so the far sea melts into the sun.
+  // Sky: three-stop sunset dome (orange horizon, rose mid, deep blue top)
+  // + fog so the far sea melts into the sun.
   const skyGeo = new THREE.SphereGeometry(900, 24, 16);
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     uniforms: {
       top: { value: new THREE.Color(PALETTE.skyTop) },
+      mid: { value: new THREE.Color(0xe86a7a) },
       horizon: { value: new THREE.Color(PALETTE.skyHorizon) },
     },
     vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying vec3 vP; uniform vec3 top; uniform vec3 horizon; void main(){ float h = normalize(vP).y; gl_FragColor = vec4(mix(horizon, top, smoothstep(0.0, 0.55, h)), 1.0); }',
+    fragmentShader: 'varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 horizon; void main(){ float h = normalize(vP).y; vec3 c = mix(horizon, mid, smoothstep(0.0, 0.28, h)); c = mix(c, top, smoothstep(0.22, 0.6, h)); gl_FragColor = vec4(c, 1.0); }',
   });
   scene.add(new THREE.Mesh(skyGeo, skyMat));
   scene.fog = new THREE.Fog(PALETTE.fog, 220, 700);
@@ -147,23 +139,23 @@ export function buildCity(scene) {
   sunGlow.scale.setScalar(260);
   scene.add(sunGlow);
 
-  // High soft clouds, so the sky has depth instead of a flat gradient.
+  // Low warm clouds, so the sky has depth instead of a flat gradient.
   // A fresh seeded stream — the shared rng is untouched, the city layout
   // cannot shift under them.
   const cloudRng = mulberry32(20261119);
   for (let i = 0; i < 8; i++) {
     const cloud = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: sunGlowTex, color: 0xffffff, transparent: true,
-      opacity: 0.18 + cloudRng() * 0.12, depthWrite: false, fog: false,
+      map: sunGlowTex, color: 0xffe8cc, transparent: true,
+      opacity: 0.30 + cloudRng() * 0.15, depthWrite: false, fog: false,
     }));
-    cloud.position.set(-500 + cloudRng() * 1100, 320 + cloudRng() * 160, -500 + cloudRng() * 1000);
-    cloud.scale.set(120 + cloudRng() * 100, 40 + cloudRng() * 30, 1);
+    cloud.position.set(-500 + cloudRng() * 1100, 200 + cloudRng() * 110, -500 + cloudRng() * 1000);
+    cloud.scale.set(160 + cloudRng() * 120, 55 + cloudRng() * 35, 1);
     cloud.userData.v5kind = 'cloud';
     scene.add(cloud);
     v5counts.clouds++;
   }
 
-  // Ground: one big pavement slab under the city, sand beyond the beach line.
+  // Ground slab + sand beyond the beach.
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.half * 2 + 40, CITY.half * 2 + 40),
     new THREE.MeshLambertMaterial({ map: pavementTexture(), color: 0xbfb49e }),
@@ -171,6 +163,15 @@ export function buildCity(scene) {
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
+
+  // Dark outer apron under everything, so no void shows past the city edge.
+  const apron = new THREE.Mesh(
+    new THREE.PlaneGeometry(2400, 2400),
+    new THREE.MeshLambertMaterial({ color: 0x3d3226 }),
+  );
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.y = -0.05;
+  scene.add(apron);
 
   const sand = new THREE.Mesh(
     new THREE.PlaneGeometry(CITY.beachEnd - CITY.half + 120, CITY.half * 2 + 40),
@@ -344,12 +345,8 @@ export function buildCity(scene) {
   }
   v5counts.roofColorsUsed = roofUsed.size;
 
-  // Landmark towers: the Solmar Casino and the Marina hotel, taller than the
-  // rest. Each gets its own facade seed from its position, so the two
-  // landmarks never share a texture. Note the casino sits on the (0,-180)
-  // intersection itself — mission steps that point at it must use radii
-  // that reach the tower's faces (see missions.js, Mission 8), because
-  // the centre is inside this collider and no player can ever stand there.
+  // Landmark towers (Solmar Casino, Marina hotel): own facade seeds, so
+  // the two never share a texture. Casino sits on (0,-180) — see Mission 8.
   function buildLandmarkTower(x, z, w, h, d, color) {
     const seed = Math.abs(Math.floor(x * 7 + z * 13)) + 5;
     const { floors, cols } = facadeBucket(h, w);
@@ -557,8 +554,7 @@ export function buildCity(scene) {
     colliders.push({ minX: ux - 0.3, maxX: ux + 0.3, minZ: uz - 0.3, maxZ: uz + 0.3 });
   }
 
-  // Street lamps on the main avenues. A warm glow sprite on every
-  // third lamp, so the avenues read as lit at sunset without adding lights.
+  // Street lamps: warm glow on every third lamp.
   const poleMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe6a8 });
   const poleGeo = new THREE.CylinderGeometry(0.12, 0.12, 6, 6);
@@ -654,6 +650,21 @@ export function buildCity(scene) {
     v5counts.halos++;
     colliders.push({ minX: x - 6, maxX: x + 6, minZ: z - 4, maxZ: z + 4 });
     world.shops.push({ ...shop, x, z });
+  }
+
+  // Gang hideouts: a gang-coloured sign at each turf centre.
+  for (const g of GANGS) {
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 2.5),
+      new THREE.MeshBasicMaterial({ map: signTexture(g.name, '#1d2733', '#' + g.color.toString(16).padStart(6, '0')) }),
+    );
+    sign.position.set(g.hx, 5, g.hz);
+    sign.rotation.y = Math.atan2(-g.hx, -g.hz);
+    sign.userData.v5kind = 'gangSign';
+    scene.add(sign);
+    const post = new THREE.Mesh(poleGeo, poleMat);
+    post.position.set(g.hx, 2.5, g.hz);
+    scene.add(post);
   }
 
   // Safehouse: a small beach house with a porch light and a garage door.

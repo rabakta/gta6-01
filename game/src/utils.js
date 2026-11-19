@@ -3,8 +3,6 @@
 // can import it without pulling in the world: pure functions only, no DOM,
 // no three.js. Headings are radians, 0 = +Z, forward = (sin h, cos h).
 
-import { CITY } from './config.js';
-
 // ---------------------------------------------------------------------------
 // Deterministic random
 // ---------------------------------------------------------------------------
@@ -21,13 +19,6 @@ export function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
-// Uniform float in [lo, hi) and integer in [lo, hi] from a seeded stream.
-export function randRange(rng, lo, hi) { return lo + rng() * (hi - lo); }
-export function randInt(rng, lo, hi) { return lo + Math.floor(rng() * (hi - lo + 1)); }
-
-// True with probability `p` (0..1).
-export function chance(rng, p) { return rng() < p; }
 
 export function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
 
@@ -74,14 +65,10 @@ export function angleDiff(from, to) {
 }
 export function angleLerp(a, b, t) { return a + angleDiff(a, b) * t; }
 
-// ---------------------------------------------------------------------------
-// Headings: radians, 0 = facing +Z (forward is (sin h, cos h); the minimap
-// draws +Z down, so north on the map is -Z). A chase camera sits at
-// heading + PI, behind the car.
-// ---------------------------------------------------------------------------
-
-export function headingToVector(h) { return { x: Math.sin(h), z: Math.cos(h) }; }
-export function vectorToHeading(x, z) { return Math.atan2(x, z); }
+// Theft witnessed? Parked never, mission always (driver sees), traffic only if police near.
+export function theftWitnessed(kind, policeDist) {
+  return kind === 'mission' || (kind !== 'parked' && policeDist < 40);
+}
 
 // ---------------------------------------------------------------------------
 // Formatting and DOM
@@ -103,6 +90,3 @@ export function makeCanvas(w, h) {
   c.height = h;
   return c;
 }
-
-// The city edge, for clamps that live outside the city module.
-export function cityBounds() { return { min: -CITY.half - 5, max: CITY.beachEnd + 50 }; }

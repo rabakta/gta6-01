@@ -1,13 +1,18 @@
 // BRISA BAY — HUD: DOM readouts (cash, health, stars, weapon, speed, radio,
-// objective, toasts, menus) and the 2D minimap canvas with live blips for
-// the player, traffic, police, the helicopter, the mission marker, world
-// pickups, police roadblocks and taxi fares. The fare blip is amber ($ in
-// a gold circle); bus stops are cyan squares. Garage upgrade levels show
-// under the vitals, so a tuned ride is always visible.
+// objective, toasts, menus) and the 2D minimap with live blips for the
+// player, traffic, police, helicopter, mission marker, pickups, roadblocks,
+// taxi fares and gang turf. Garage upgrade levels show under the vitals.
 import { CITY, WANTED_MAX } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
 
-const HUD_IDS = ['cash', 'health-fill', 'health-num', 'armor', 'mods', 'stars', 'weapon', 'ammo', 'speed', 'radio', 'objective', 'toast', 'clock', 'menu', 'menu-title', 'menu-body', 'menu-hint', 'shop', 'shop-title', 'shop-items', 'damage'];
+const HUD_IDS = ['cash', 'health-fill', 'health-num', 'armor', 'mods', 'stars', 'weapon', 'ammo', 'weapons', 'speed', 'radio', 'objective', 'toast', 'clock', 'menu', 'menu-title', 'menu-body', 'menu-hint', 'shop', 'shop-title', 'shop-items', 'damage'];
+
+// Weapon slots: owned weapons with switch keys, current highlighted.
+export function weaponSlotList(weapons, current) {
+  const defs = [['fists', 'FISTS', '0'], ['pistol', 'P9', '1'], ['smg', 'SMG', '2'], ['shotgun', 'BOOM', '3']];
+  return defs.filter(([k]) => k === 'fists' || (weapons && weapons[k]))
+    .map(([k, label, key]) => ({ key: k, label, hotkey: key, on: k === current }));
+}
 
 export class HUD {
   constructor(world) {
@@ -18,6 +23,7 @@ export class HUD {
     this.mapCtx = this.map.getContext('2d');
     this.toastTimer = 0;
     this.damageFlash = 0;
+    this.weaponSig = '';
   }
 
   showMenu(kind, title, body, hint) {
@@ -47,6 +53,15 @@ export class HUD {
     this.el.damage.style.opacity = '0.55';
   }
 
+  renderWeaponSlots(state) {
+    const slots = weaponSlotList(state.weapons, state.weaponKey || 'fists');
+    const sig = JSON.stringify(slots);
+    if (sig === this.weaponSig) return;
+    this.weaponSig = sig;
+    this.el.weapons.innerHTML = slots.map((s) =>
+      `<span style="display:inline-block;padding:2px 7px;margin:2px 4px 0 0;border:1px solid ${s.on ? '#ffd34d' : 'rgba(255,255,255,0.3)'};border-radius:3px;background:${s.on ? 'rgba(255,211,77,0.28)' : 'rgba(0,0,0,0.35)'};color:${s.on ? '#fff' : 'rgba(255,255,255,0.65)'};font-size:11px;font-weight:700">${s.hotkey} ${s.label}</span>`).join('');
+  }
+
   update(dt, state) {
     // state: { cash, health, armor, wanted, weaponName, ammo, speedKmh,
     //   radio, objective, clockSec, player, cars, police, heliPos,
@@ -70,6 +85,7 @@ export class HUD {
     this.el.stars.style.opacity = hot ? String(0.65 + 0.35 * Math.sin(performance.now() / 160)) : '1';
     this.el.weapon.textContent = state.weaponName;
     this.el.ammo.textContent = state.ammo === Infinity ? '∞' : String(state.ammo);
+    this.renderWeaponSlots(state);
     this.el.speed.textContent = Math.round(state.speedKmh) + ' km/h' +
       (state.carHealth != null ? '  ·  CAR ' + Math.max(0, Math.round(state.carHealth)) : '');
     this.el.radio.textContent = '♪ ' + state.radio;
@@ -130,13 +146,27 @@ export class HUD {
       const [x, z] = toMap(s.x, s.z);
       ctx.fillRect(x - 3, z - 3, 6, 6);
     }
-    // World pickups — green crosses for health, blue diamonds for armour.
+    // Gang turf — faint colour wash + hideout dot, so Rio knows where not to stroll.
+    for (const g of state.gangs || []) {
+      const [x0, z0] = toMap(g.x0, g.z0);
+      const [x1, z1] = toMap(g.x1, g.z1);
+      const col = '#' + g.color.toString(16).padStart(6, '0');
+      ctx.fillStyle = col;
+      ctx.globalAlpha = 0.14;
+      ctx.fillRect(x0, z0, x1 - x0, z1 - z0);
+      ctx.globalAlpha = 1;
+      const [hx, hz] = toMap(g.hx, g.hz);
+      ctx.beginPath(); ctx.arc(hx, hz, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // World pickups — green health, blue armour, orange guns.
     for (const p of state.pickups || []) {
       const [x, z] = toMap(p.x, p.z);
-      ctx.fillStyle = p.kind === 'health' ? '#2fd47a' : '#4da3ff';
+      ctx.fillStyle = p.kind === 'health' ? '#2fd47a' : p.kind === 'weapon' ? '#ff8c42' : '#4da3ff';
       if (p.kind === 'health') {
         ctx.fillRect(x - 1, z - 4, 2, 8);
         ctx.fillRect(x - 4, z - 1, 8, 2);
+      } else if (p.kind === 'weapon') {
+        ctx.fillRect(x - 3, z - 3, 6, 6);
       } else {
         ctx.beginPath();
         ctx.moveTo(x, z - 4); ctx.lineTo(x + 4, z); ctx.lineTo(x, z + 4); ctx.lineTo(x - 4, z);

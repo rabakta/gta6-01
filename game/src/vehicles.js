@@ -478,10 +478,7 @@ export class Car {
   }
 }
 
-// --- Traffic ----------------------------------------------------------------
-// A traffic car cruises one road line, turns at intersections, brakes for the
-// car ahead. Routes are road coordinates, never free driving, so traffic
-// always looks like it belongs on the street.
+// Traffic: cars cruise one road line, turn at intersections, brake ahead.
 export class TrafficManager {
   constructor(scene, world, rng) {
     this.scene = scene;
@@ -721,7 +718,7 @@ export class TrafficManager {
   }
 }
 
-// --- Police -----------------------------------------------------------------
+// --- Police ---
 export class PoliceManager {
   constructor(scene, world, rng) {
     this.scene = scene;

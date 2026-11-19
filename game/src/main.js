@@ -1,7 +1,7 @@
 // BRISA BAY — boot, game loop and the glue between systems.
 import * as THREE from 'three';
-import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT } from './config.js';
-import { clamp, dist2, mulberry32, pick, fmtMoney } from './utils.js';
+import { WEAPONS, MISSION_META, STORY_INTRO, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT, GANGS } from './config.js';
+import { clamp, dist2, mulberry32, pick, fmtMoney, theftWitnessed } from './utils.js';
 import { buildCity, nearestRoadCoord } from './city.js';
 import { Car, TrafficManager, PoliceManager, carsOverlap } from './vehicles.js';
 import { Player } from './player.js';
@@ -25,8 +25,7 @@ class Game {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    // Filmic tone mapping + sRGB output, so the sunset grades like a
-    // photograph instead of clipping to white.
+    // Filmic tone mapping + sRGB, so the sunset grades like a photo.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -57,9 +56,7 @@ class Game {
     // Rio can steal (see spawnParked).
     this.birds = new Birds(this.scene);
     this.parked = [];
-    // The headlight pool — one soft pool of light on the road ahead
-    // of whatever Rio is driving, repositioned every frame. One mesh,
-    // shared by every car, so it costs nothing when Rio is on foot.
+    // Headlight pool: one soft light on the road ahead of the driven car.
     this.headlightPool = new THREE.Group();
     const poolMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(5, 9),
@@ -94,20 +91,19 @@ class Game {
     this.traffic.spawn(14, { x: -140, z: 140 }, 150);
     this.peds.spawn(24, { x: -140, z: 140 }, 120);
     // A few parked cars near the start so the first minute has wheels.
-    // Parked, not decorative: spawnParked registers them, so E steals
-    // them like any other car (spawnCar cars were invisible to E).
     this.spawnParked('brisa', 0xc94f43, -120, 120, Math.PI / 2);
     this.spawnParked('vento', 0x2b3a55, -100, 160, -Math.PI / 2);
     this.spawnParked('taxi', 0xf2a007, -160, 100, 0);
-    // The city wakes up — waiters at two stops, a performer with a
-    // crowd at the Plaza, vendors behind their stalls, parked rides Rio
-    // can steal, and two walking groups near the start.
+    // The city wakes up: waiters, performer, vendors, parked rides, groups.
     for (const stop of this.world.busStops.slice(0, 2)) this.peds.spawnWaiters(stop, 2);
     this.peds.spawnPerformer(PERFORMER_SPOT.x, PERFORMER_SPOT.z);
     this.peds.spawnVendors(this.world.vendorSpots);
     for (const s of PARKED_SPOTS) this.spawnParked(s.defKey, s.color, s.x, s.z, s.heading);
     this.peds.spawnGroup(-132, 130, 3);
     this.peds.spawnGroup(-110, 150, 2);
+    // Gang muscle holds its turf from the start; heat rises when Rio hits them.
+    this.gangHeat = [0, 0];
+    for (const g of GANGS) this.peds.spawnGang(g, 3);
 
     this.bindInput();
     addEventListener('resize', () => this.onResize());
@@ -132,7 +128,7 @@ class Game {
     const faresEarned = (this.save.stats && this.save.stats.faresEarned) || 0;
     return (
       '<p class="story">' + STORY_INTRO.join('<br>') + '</p>' +
-      '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car / shop &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot<br>' +
+      '<p class="controls">WASD drive / walk &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; E enter car / shop &nbsp;·&nbsp; F punch &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; Pistol by the safehouse<br>' +
       'H horn &nbsp;·&nbsp; Q radio on/off &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M next mission &nbsp;·&nbsp; P pause &nbsp;·&nbsp; Mouse drag: camera</p>' +
       (next ? '<p class="next">Next mission: <b>' + next.name + '</b> — ' + next.brief + '</p>' : '<p class="next">Story complete. Free roam, Rio.</p>') +
       '<p class="save-line">' + (hasSave ? 'Save found: ' + fmtMoney(this.save.cash) + ' - chapter ' + (this.save.missionIndex + 1) + ' of ' + MISSION_META.length + '. [C] Continue &nbsp; [N] New game' : 'No save yet. [N] New game') + '</p>' +
@@ -146,9 +142,7 @@ class Game {
   setWanted(n) { this.wanted = clamp(Math.round(n), 0, 5); this.wantedDecay = 0; }
   addWanted(n) { this.setWanted(this.wanted + n); }
 
-  // The objective line: an active mission owns it; a live fare comes
-  // next; otherwise the next mission, with the package count appended
-  // once Rio has found at least one.
+  // Objective: active mission, else live fare, else next mission.
   objectiveText() {
     if (this.missions.state === 'active') return this.missions.objectiveText();
     const taxi = this.taxi.objectiveText();
@@ -158,7 +152,7 @@ class Game {
     return n > 0 ? base + ' · Packages ' + n + '/20' : base;
   }
 
-  // --- input ------------------------------------------------------------------
+  // --- input ---
   bindInput() {
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
@@ -223,9 +217,7 @@ class Game {
     if (newGame) {
       clearSave();
       this.save = defaultSave();
-      // The collectible manager holds a reference to the save object, so
-      // a new game has to re-point it or packages would write to the old
-      // save and the HUD would read the new (empty) one.
+      // New game must re-point the collectible manager at the new save.
       this.collectibles.reset(this.save);
       this.player.health = 100;
       this.player.armor = 0;
@@ -254,9 +246,7 @@ class Game {
     this.scene.add(car.mesh);
     return car;
   }
-  // A parked car Rio can steal. Unlike the three decorative cars
-  // near the start, parked cars join this.parked, so allCars() and
-  // nearestCar() see them — E next to one steals it like any traffic car.
+  // A parked car Rio can steal: it joins this.parked, so E sees it.
   spawnParked(defKey, color, x, z, heading) {
     const car = new Car(defKey, color, x, z, heading);
     car.kind = 'parked';
@@ -292,8 +282,7 @@ class Game {
     // Whatever Rio drives gets his garage upgrades — armour, engine, tyres.
     car.applyUpgrades(this.save.upgrades || { armor: 0, engine: 0, tires: 0 });
     this.player.mesh.visible = false;
-    // Snap the chase cam behind the car at once. The old lerp took ~2 s
-    // to swing round, so W looked like it drove sideways or backwards.
+    // Snap the chase cam behind the car at once (no 2 s swing).
     this.player.camYaw = car.heading + Math.PI;
     this.audio.blip(660, 0.1, 0.12);
   }
@@ -314,8 +303,7 @@ class Game {
   onInteract() {
     if (this.state !== 'playing') return;
     if (this.shopOpen) return;
-    // A fare pickup beats exiting the car — pressing E next to a
-    // waiting passenger in a cab picks them up, it does not step out.
+    // A fare pickup beats exiting the car.
     if (this.taxi.tryPickup()) return;
     if (this.player.inCar) { this.exitCar(); return; }
     if (this.nearShop) { this.openShop(this.nearShop); return; }
@@ -324,9 +312,11 @@ class Game {
       const stealing = car.kind === 'traffic' || car.kind === 'mission' || car.kind === 'parked';
       this.enterCar(car);
       if (stealing) {
-        this.addWanted(1);
         this.save.stats.carsStolen++;
-        this.notify('You stole the ' + car.def.label + '. The BCPD noticed.');
+        if (theftWitnessed(car.kind, this.police.nearestPoliceDist(car.pos))) {
+          this.addWanted(1);
+          this.notify('You stole the ' + car.def.label + '. The BCPD noticed.');
+        }
       } else if (car.kind === 'police') {
         this.addWanted(2);
         this.notify('You stole a BCPD Interceptor. Bold, Rio.');
@@ -346,8 +336,7 @@ class Game {
       if (ahead > 0 && ahead < 9 && side < 2.2) { blocked = true; break; }
     }
     car.drive(dt, blocked ? -0.4 : (car.speed < targetSpeed ? 0.7 : 0.15), 0, this.world.colliders);
-    // Turn only at an intersection (both coords on road lines) and snap
-    // onto it, so a rival never turns mid-block and drives through houses.
+    // Turn only at intersections, snapped on, so rivals stay on roads.
     const onX = Math.abs(car.pos.x - nearestRoadCoord(car.pos.x)) < 1.2;
     const onZ = Math.abs(car.pos.z - nearestRoadCoord(car.pos.z)) < 1.2;
     const onLine = ai.axis === 'x' ? onZ : onX;
@@ -367,7 +356,21 @@ class Game {
     const origin = { x: this.player.pos.x, y: 1.2, z: this.player.pos.z };
     const hit = this.combat.fire('fists', origin, dir, targets, null);
     if (hit && hit.target.role === 'guard') this.missions.onGuardKilled();
+    if (hit && hit.target.role === 'gang') this.onGangHit(hit.target);
     if (hit && hit.killed) this.addWanted(1);
+  }
+
+  // Hitting a gang member raises that gang's heat: wider aggro, more men.
+  onGangHit(ped) {
+    const gi = GANGS.indexOf(ped.gang);
+    if (gi < 0) return;
+    this.gangHeat[gi]++;
+    for (const p of this.peds.peds) {
+      if (p.role === 'gang' && p.gang === ped.gang) p.aggro = Math.min(44, 26 + this.gangHeat[gi] * 3);
+    }
+    const alive = this.peds.peds.filter((p) => !p.dead && p.role === 'gang' && p.gang === ped.gang).length;
+    if (alive < 4 + this.gangHeat[gi]) this.peds.spawnGang(ped.gang, 2);
+    this.notify('The ' + ped.gang.name + ' are gunning for you now.');
   }
 
   shoot() {
@@ -385,6 +388,7 @@ class Game {
     if (hit) {
       this.addWanted(1);
       if (hit.target.role === 'guard' && hit.killed) this.missions.onGuardKilled();
+      if (hit.target.role === 'gang') this.onGangHit(hit.target);
       if (hit.target.kind === 'rival' && hit.killed) this.missions.onRivalDead();
     }
   }
@@ -458,8 +462,7 @@ class Game {
     } else if (id === 'respray') {
       if (!this.player.inCar) { this.notify('Bring a car to respray.'); return; }
       if (!spend(150)) return;
-      // Repaint the body mesh (kept in userData so we never depend on a
-      // child index) with a random colour from the shop palette.
+      // Repaint the body mesh (kept in userData).
       const body = this.player.inCar.mesh.userData.body;
       body.material = body.material.clone();
       body.material.color.setHex(pick(mulberry32(Date.now() % 100000), RESPRAY_COLORS));
@@ -503,8 +506,7 @@ class Game {
     this.audio.fail();
   }
   respawn() {
-    // Step out of the wreck first: exitCar places Rio beside the car, and
-    // the old order let that overwrite the hospital position.
+    // Exit the car first, or exitCar overwrites the hospital spot.
     if (this.player.inCar) this.exitCar();
     const h = this.world.places.hospital;
     this.player.reset(h.x, h.z + 10);
@@ -521,6 +523,7 @@ class Game {
     const p = this.player;
 
     // Weapon switching.
+    if (this.keys.Digit0) this.save.currentWeapon = 'fists';
     if (this.keys.Digit1 && this.save.weapons.pistol) this.save.currentWeapon = 'pistol';
     if (this.keys.Digit2 && this.save.weapons.smg) this.save.currentWeapon = 'smg';
     if (this.keys.Digit3 && this.save.weapons.shotgun) this.save.currentWeapon = 'shotgun';
@@ -539,8 +542,7 @@ class Game {
       this.audio.setEngine(clamp(Math.abs(car.speed) / car.eff.topSpeed, 0, 1), true);
       // Brake lights: S while rolling forward, or the handbrake.
       car.brakeLight((fwd < 0 && car.speed > 0.5) || handbrake);
-      // Exhaust puffs at the tailpipe under throttle; a tuned engine
-      // throws orange flame instead of grey smoke.
+      // Exhaust puffs at the tailpipe under throttle.
       const rearX = car.pos.x - Math.sin(car.heading) * (car.length / 2 + 0.3);
       const rearZ = car.pos.z - Math.cos(car.heading) * (car.length / 2 + 0.3);
       if (fwd > 0 && Math.abs(car.speed) > 8) {
@@ -561,9 +563,7 @@ class Game {
         }
       }
       if (car.smoking) this.particles.smoke({ x: car.pos.x, y: 1.2, z: car.pos.z }, 1);
-      // A wrecked ride blows up once. damage() already marks the car dead
-      // the moment health hits zero, so the old `!car.dead` guard here
-      // could never fire — the explosion (and the mission fail) never ran.
+      // A wrecked ride blows up once (damage() already marks it dead).
       if (car.health <= 0 && !car.exploded) {
         car.exploded = true;
         this.combat.explode({ x: car.pos.x, y: 1, z: car.pos.z }, 9, this.allCars().concat(this.peds.peds), this.audio);
@@ -572,9 +572,7 @@ class Game {
         if (this.missions.state === 'active') this.missions.fail('Ride destroyed');
       }
     } else {
-      // Camera space: the camera sits at target + (sin yaw, cos yaw), so
-      // screen-forward is MINUS that vector. The old code had the sign
-      // backwards — W walked toward the camera, S walked away from it.
+      // Camera space: screen-forward is MINUS the camera offset vector.
       const yaw = p.camYaw;
       const mx = -Math.sin(yaw) * fwd + Math.cos(yaw) * strafe;
       const mz = -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
@@ -607,9 +605,7 @@ class Game {
       }
     }
 
-    // The headlight pool follows the driven car, hidden on foot.
-    // The group's -Z is the pool's long axis, so yaw + PI points it
-    // forward along the car's heading.
+    // Headlight pool follows the driven car (hidden on foot).
     if (p.inCar) {
       const car = p.inCar;
       this.headlightPool.visible = true;
@@ -619,9 +615,7 @@ class Game {
       this.headlightPool.visible = false;
     }
 
-    // Car-vs-car and car-vs-ped collisions for the player's car. The
-    // overlap test is length-aware (see carsOverlap), so a bus nose no
-    // longer clips through Rio's door before anything pushes back.
+    // Car-vs-car / car-vs-ped collisions for the player's car.
     if (p.inCar) {
       const car = p.inCar;
       for (const other of this.allCars()) {
@@ -692,10 +686,28 @@ class Game {
       this.roadblockAlerted = false;
     }
 
-    // Guards shoot back at Rio.
+    // Guards shoot back at Rio; gang muscle closes in and swings, or
+    // shoots when armed. Melee and gunfire share the shoot timer.
     for (const ped of this.peds.peds) {
       if (!ped.hostile || ped.dead) continue;
       const d = dist2(ped.pos.x, ped.pos.z, p.pos.x, p.pos.z);
+      if (ped.role === 'gang') {
+        if (d > 26) continue;
+        ped.shootTimer -= dt;
+        ped.heading = Math.atan2(p.pos.x - ped.pos.x, p.pos.z - ped.pos.z);
+        if (ped.shootTimer <= 0) {
+          ped.shootTimer = 1.0 + Math.random() * 0.6;
+          if (d < 2.2 && !p.inCar) {
+            if (p.damage(8 + Math.random() * 5)) { this.wasted(); return; }
+          } else if (ped.armed) {
+            if (p.damage(5 + Math.random() * 5)) { this.wasted(); return; }
+            this.particles.sparks({ x: ped.pos.x, y: 1.4, z: ped.pos.z }, 4);
+          }
+          this.hud.flashDamage();
+          this.audio.blip(180, 0.1, 0.12);
+        }
+        continue;
+      }
       if (d < 26) {
         ped.shootTimer -= dt;
         ped.heading = Math.atan2(p.pos.x - ped.pos.x, p.pos.z - ped.pos.z);
@@ -769,6 +781,8 @@ class Game {
       wanted: this.wanted,
       weaponName: WEAPONS[this.save.currentWeapon || 'fists'].name,
       ammo: this.save.weapons[this.save.currentWeapon || 'fists']?.ammo ?? 0,
+      weaponKey: this.save.currentWeapon || 'fists',
+      weapons: this.save.weapons,
       speedKmh: p.inCar ? Math.abs(p.inCar.speed) * 3.6 : p.speed * 3.6,
       carHealth: p.inCar ? p.inCar.health : null,
       radio: this.audio.stationName(),
@@ -783,6 +797,7 @@ class Game {
       mods: this.save.upgrades || { armor: 0, engine: 0, tires: 0 },
       fare: this.taxi.minimapBlip(),
       busStops: this.world.busStops,
+      gangs: GANGS,
     });
     if (this.elapsed % 30 < dt) this.writeSave();
   }
