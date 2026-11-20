@@ -106,7 +106,7 @@ class Game {
     this.wanted = 0;
     this.wantedDecay = 0;
     this.bustedTimer = 0;
-    this.clockSec = 18 * 3600 + 24 * 60;
+    this.clockSec = 12 * 3600;
     this.elapsed = 0;
     this.warmupFrames = 0;
     this.nearShop = null;
@@ -123,14 +123,9 @@ class Game {
     this.roadblockAlerted = false;
 
     // Time-of-day cycle (24 min real = 24 hours game)
-    this.tod = 0.775;           // start at 18:24 (0.775 of 24h)
+    this.tod = 0.5;               // start at 12:00 noon (0.5 of 24h)
     this.todSpeed = 1 / (24 * 60); // per second
-    this.sun = null;        // reference to sun light
-    this.skyMaterial = null;
-    this.hemiLight = null;
     this.fogColor = new THREE.Color();
-    this.sunDisc = null;
-    this.sunGlow = null;
 
     this.traffic.spawn(16, { x: -140, z: 140 }, 200); // reduced from 28
     this.peds.spawn(28, { x: -140, z: 140 }, 180); // reduced from 48
