@@ -7,8 +7,9 @@
 // that does not exist, or a chapter past the end of the story.
 import { SAVE_KEY, MISSION_META, WEAPONS, COLLECTIBLES } from './config.js';
 import { propEntry } from './properties.js';
+import { DISTRICTS } from './districts.js';
 
-export const SAVE_VERSION = 5; // v5: side-activity stats
+export const SAVE_VERSION = 6; // v6: districts visited
 
 export function defaultSave() {
   return {
@@ -24,6 +25,7 @@ export function defaultSave() {
     ownedCars: [],
     // Owned businesses, by index into SHOPS (see PROPERTIES).
     properties: [],
+    districts: [], // visited district ids (0..5)
     // Collectible packages found, by index into COLLECTIBLES (0..19).
     packages: [],
     stats: {
@@ -83,6 +85,15 @@ export function sanitizeSave(raw) {
     const seen = new Set();
     clean.properties = raw.properties.filter((i) => {
       if (!Number.isInteger(i) || propEntry(i) === undefined || seen.has(i)) return false;
+      seen.add(i);
+      return true;
+    });
+  }
+  // v6: districts — keep only valid ids, deduplicated.
+  if (Array.isArray(raw.districts)) {
+    const seen = new Set();
+    clean.districts = raw.districts.filter((i) => {
+      if (!Number.isInteger(i) || i < 0 || i >= DISTRICTS.length || seen.has(i)) return false;
       seen.add(i);
       return true;
     });

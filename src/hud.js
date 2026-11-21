@@ -9,6 +9,7 @@
 import { CITY, WANTED_MAX, STORY_INTRO, MISSION_META, WEAPONS } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
 import { shopIndex } from './properties.js';
+import { DISTRICTS } from './districts.js';
 
 // Driving gear from signed speed (m/s) and the car's top speed: R rolling
 // back, N at a standstill, then 1..5 up the speed range.
@@ -481,6 +482,8 @@ export class HUD {
     const side = state.side || '';
     let modsText = (tags.length > 0 ? 'MODS: ' + tags.join(' · ') : '') + (biz ? (tags.length > 0 ? ' · ' : '') + biz : '');
     if (side) modsText += (modsText ? ' · ' : '') + side;
+    const district = state.district || '';
+    if (district) modsText += (modsText ? ' · ' : '') + district;
     this.el.mods.textContent = modsText;
     const stars = '★'.repeat(state.wanted) + '☆'.repeat(WANTED_MAX - state.wanted);
     this.el.stars.textContent = stars;
@@ -622,6 +625,18 @@ export class HUD {
     if (beachX1 < S && seaX1 > 0) {
       ctx.fillStyle = '#d9b380';
       ctx.fillRect(Math.max(0, beachX1), 0, Math.max(0, seaX1 - beachX1), S);
+    }
+
+    // District names, in their colours, at each district centre.
+    ctx.font = 'bold 11px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const d of DISTRICTS) {
+      const [lx, lz] = worldToMap(d.cx, d.cz);
+      if (this.inMapView(lx, lz, S, 30)) {
+        ctx.fillStyle = d.color;
+        ctx.fillText(d.name, lx, lz);
+      }
     }
 
     // Shops (green squares); a shop Jay owns reads gold, so his rents

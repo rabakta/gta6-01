@@ -21,6 +21,7 @@ import { shotParam, stageShot } from './shots.js';
 import { glowTexture } from './textures.js';
 import { PropertiesManager } from './properties.js';
 import { SideManager } from './side.js';
+import { DistrictsManager } from './districts.js';
 
 class Game {
   constructor() {
@@ -69,14 +70,13 @@ class Game {
     this.taxi = new TaxiManager(this);
     this.props = new PropertiesManager(this);
     this.side = new SideManager(this);
+    this.districts = new DistrictsManager(this);
     this.collectibles = new CollectibleManager(this.scene, this.save);
-    // Birds over the lighthouse and the pier, and the parked cars
-    // Rio can steal (see spawnParked).
+    // Birds over the lighthouse and pier, parked cars Rio can steal.
     this.birds = new Birds(this.scene);
     this.parked = [];
     this.boats = [];
-    // Headlight pool: real SpotLights for the driven car, plus a soft
-    // glow mesh for the cheap fill. SpotLights cast shadows at night.
+    // Headlight pool: real SpotLights for the driven car + a glow mesh fill.
     this.headlightPool = new THREE.Group();
     const poolMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(5, 9),
@@ -182,8 +182,7 @@ class Game {
     this.renderer.setSize(innerWidth, innerHeight);
   }
 
-  // Start screen: the HUD builds it from this data; the story, controls
-  // and save ledger live in hud.js now, not in a string here.
+  // Start screen: the HUD builds it from this data; story, controls and save ledger live in hud.js.
   showStartScreen() {
     this.state = 'menu';
     const next = this.save.missionIndex < MISSION_META.length ? MISSION_META[this.save.missionIndex] : null;
@@ -461,6 +460,7 @@ class Game {
     // A fare pickup beats exiting the car.
     if (this.taxi.tryPickup()) return;
     if (this.side.tryInteract()) return;
+    if (this.districts.tryInteract()) return;
     if (this.player.inCar) { this.exitCar(); return; }
     if (this.nearShop) { this.openShop(this.nearShop); return; }
     const car = this.nearestCar(3.4);
@@ -798,9 +798,7 @@ class Game {
     if (this.keys.Digit2 && this.save.weapons.smg) this.save.currentWeapon = 'smg';
     if (this.keys.Digit3 && this.save.weapons.shotgun) this.save.currentWeapon = 'shotgun';
 
-    // Movement input, in camera space: keys plus the touch stick, so a
-    // phone player steers exactly like a keyboard one. Stick to the edge
-    // to run, the same as holding SHIFT.
+    // Movement input, in camera space: keys plus the touch stick.
     const ta = this.touch.axes;
     const fwd = clamp((this.keys.KeyW || this.keys.ArrowUp ? 1 : 0) - (this.keys.KeyS || this.keys.ArrowDown ? 1 : 0) + ta.fwd, -1, 1);
     const strafe = clamp((this.keys.KeyD || this.keys.ArrowRight ? 1 : 0) - (this.keys.KeyA || this.keys.ArrowLeft ? 1 : 0) + ta.strafe, -1, 1);
@@ -848,10 +846,9 @@ class Game {
       const yaw = p.camYaw;
       const mx = -Math.sin(yaw) * fwd + Math.cos(yaw) * strafe;
       const mz = -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
-      p.updateOnFoot(dt, { x: mx, z: mz }, running, this.world.colliders);
+      p.updateOnFoot(dt, { x: mx, z: mz }, running, this.districts.inside ? this.districts.roomColliders : this.world.colliders, this.districts.bounds());
       this.audio.setEngine(0, false);
-      // On foot, Rio is solid: cars push him out of their box instead of
-      // driving through him, and a fast one hurts.
+      // On foot, Rio is solid: cars push him out instead of driving through.
       for (const car of this.allCars()) {
         if (car.dead) continue;
         const dx = p.pos.x - car.pos.x, dz = p.pos.z - car.pos.z;
@@ -946,27 +943,29 @@ class Game {
     }
 
     // Traffic + police + peds + missions + pickups + fares + packages.
-    this.traffic.update(dt, p.pos, this.allCars(), this.peds.peds);
-    // A dwelling bus boards its waiters — once per stop, so the same
-    // bus does not keep boarding an empty bench for four seconds.
-    for (const d of this.traffic.dwelling) {
+    // Inside an interior the city freezes: every car is >150 m away, so
+    // traffic would despawn and respawn around the room within seconds.
+    const frozen = this.districts.inside;
+    if (!frozen) this.traffic.update(dt, p.pos, this.allCars(), this.peds.peds);
+    // A dwelling bus boards its waiters once per stop.
+    if (!frozen) for (const d of this.traffic.dwelling) {
       const car = d.car;
       if (car.ai.boardedThisStop) continue;
       car.ai.boardedThisStop = true;
       const n = this.peds.boardWaiters(d.stop);
       if (n > 0) this.notify(n + (n === 1 ? ' passenger' : ' passengers') + ' boarded the bus.');
     }
-    this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars(), p.heading);
-    // Peds flee a danger zone: wanted heat, or Rio speeding at them in
-    // a car even with no stars — a fast car is danger on its own.
+    if (!frozen) this.police.update(dt, this.wanted, p.pos, !!p.inCar, this.allCars(), p.heading);
+    // Peds flee a danger zone: wanted heat, or Rio speeding at them.
     const speeding = p.inCar && Math.abs(p.inCar.speed) > 10;
-    const danger = (this.wanted > 0 || speeding) ? { x: p.pos.x, z: p.pos.z, r: this.wanted > 0 ? 25 : 12 } : null;
-    this.peds.update(dt, danger, p.pos);
-    this.missions.update(dt);
+    const danger = frozen ? null : (this.wanted > 0 || speeding) ? { x: p.pos.x, z: p.pos.z, r: this.wanted > 0 ? 25 : 12 } : null;
+    if (!frozen) this.peds.update(dt, danger, p.pos);
+    if (!frozen) this.missions.update(dt);
     this.pickups.update(dt, p.pos, this);
     this.taxi.update(dt);
     this.props.update(dt);
     this.side.update(dt);
+    this.districts.update(dt);
     this.collectibles.update(dt, p.pos, this);
     this.combat.update(dt);
     this.particles.update(dt);
@@ -1063,21 +1062,20 @@ class Game {
     this.promptText = this.shopOpen ? null
       : this.taxi.offer ? 'E — Pick up ' + this.taxi.offer.name
       : this.side.prompt() ? 'E — ' + this.side.prompt()
+      : this.districts.prompt() ? 'E — ' + this.districts.prompt()
       : this.nearShop ? 'E — ' + this.nearShop.name + ': ' + this.nearShop.blurb
       : this.nearCar ? 'E — Steal the ' + this.nearCar.def.label : null;
 
     // Keep the city populated around the player.
-    if (this.traffic.cars.filter((c) => !c.dead).length < 12) this.traffic.spawn(4, p.pos, 150); // reduced from 18/6
-    if (this.peds.peds.filter((x) => !x.dead).length < 20) this.peds.spawn(6, p.pos, 130); // reduced from 32/10
-    // Keep the bus stops staffed — when the waiters thin out, send
-    // two more to a random stop. A stop with no waiters is just a bench.
-    if (this.peds.waiters().length < 6) {
+    if (!frozen && this.traffic.cars.filter((c) => !c.dead).length < 12) this.traffic.spawn(4, p.pos, 150); // reduced from 18/6
+    if (!frozen && this.peds.peds.filter((x) => !x.dead).length < 20) this.peds.spawn(6, p.pos, 130); // reduced from 32/10
+    // Keep the bus stops staffed — send two more when the waiters thin out.
+    if (!frozen && this.peds.waiters().length < 6) {
       const stop = this.world.busStops[Math.floor(Math.random() * this.world.busStops.length)];
       this.peds.spawnWaiters(stop, 3);
     }
-    // A fresh walking group now and then, so the sidewalks are not
-    // only lone walkers.
-    if (this.peds.peds.filter((x) => !x.dead && x.role === 'group').length < 5 && Math.random() < dt * 0.15) {
+    // A fresh walking group now and then, so the sidewalks are not only lone walkers.
+    if (!frozen && this.peds.peds.filter((x) => !x.dead && x.role === 'group').length < 5 && Math.random() < dt * 0.15) {
       this.peds.spawnGroup(p.pos.x + 20, p.pos.z + 10, 4);
     }
 
@@ -1104,10 +1102,11 @@ class Game {
       radioLine: this.audio.radioLine(),
       biz: this.props.hudLine(),
       side: this.side.hudLine(),
+      district: this.districts.hudLine(),
       bizOwned: this.props.owned(),
       objective: this.objectiveText(),
       clockSec: this.clockSec % 86400,
-      player: { x: p.pos.x, z: p.pos.z, heading: p.heading },
+      player: this.districts.mapPlayer(p),
       cars: this.allCars(),
       heliPos: this.police.heli ? { x: this.police.heli.position.x, z: this.police.heli.position.z } : null,
       markerPos: this.missions.markerPos || null,
@@ -1169,11 +1168,7 @@ class Game {
     // Build race track geometry (simple road mesh with checkpoints)
     this.buildRaceTrack(track);
 
-    // The race map is open ground: the city's buildings must not be
-    // invisible walls on the track. The Marina hotel sits on the
-    // circuit's checkpoint 7 in city coords — with the city colliders
-    // still active the race is unwinnable (the car pins on a phantom
-    // hotel). Park the city colliders, restore them on exit.
+    // The race map is open ground: park the city colliders, or the Marina hotel (checkpoint 7) pins the car on a phantom wall.
     this.savedCityColliders = this.world.colliders;
     this.world.colliders = [];
 
@@ -1290,9 +1285,7 @@ class Game {
 
 window.addEventListener('error', (e) => { document.title = 'ERR: ' + (e.message || 'unknown'); });
 
-// Loading screen progress. The overlay is plain HTML in index.html, so it
-// paints before this module runs; these calls advance its bar at real
-// boot milestones and fade it out once the first frame renders.
+// Loading screen progress: the overlay is plain HTML in index.html, so it paints before this module runs; these calls advance its bar at boot milestones.
 function setLoading(pct, status) {
   const fill = document.getElementById('loading-bar-fill');
   const label = document.getElementById('loading-status');

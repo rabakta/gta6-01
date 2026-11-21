@@ -59,7 +59,7 @@ export class Player {
   }
 
   // Move on foot. `move` is {x, z} in camera space, -1..1 each axis.
-  updateOnFoot(dt, move, running, colliders) {
+  updateOnFoot(dt, move, running, colliders, bounds) {
     const speed = running ? 8.5 : 4.6;
     const len = Math.hypot(move.x, move.z);
     if (len > 0.01) {
@@ -80,8 +80,10 @@ export class Player {
       if (this.jumpY <= 0) { this.jumpY = 0; this.jumpV = 0; }
     }
     resolveCircleCollisions(colliders, this.pos, 0.6);
-    this.pos.x = clamp(this.pos.x, -215, 260);
-    this.pos.z = clamp(this.pos.z, -215, 215);
+    // bounds override (interiors): default is the city edge.
+    const b = bounds || { minX: -215, maxX: 260, minZ: -215, maxZ: 215 };
+    this.pos.x = clamp(this.pos.x, b.minX, b.maxX);
+    this.pos.z = clamp(this.pos.z, b.minZ, b.maxZ);
     // Walk-cycle swing, scaled by how fast Rio is actually moving.
     const swing = Math.sin(this.walkPhase) * clamp(this.speed / 8.5, 0, 1) * 0.55;
     this.limbs.legL.rotation.x = swing;

@@ -25,6 +25,7 @@ import { joystickAxes, TouchControls } from '../game/src/touch.js';
 import { clampVolume, AudioEngine, RADIO_DJS, RADIO_ADS } from '../game/src/audio.js';
 import { Player } from '../game/src/player.js';
 import { SideManager } from '../game/src/side.js';
+import { DistrictsManager, DISTRICTS, districtAt, CLUB, ROOM } from '../game/src/districts.js';
 
 // The game uses requestAnimationFrame in a few HUD paths (toast, prompt,
 // armour bar); node has none, so stub it globally.
@@ -345,7 +346,7 @@ test('collectibles: 20, unique names, $5000 bonus', () => {
 // 2. Save / load.
 // ---------------------------------------------------------------------------
 console.log('save:');
-test('default save shape (v5)', () => {
+test('default save shape (v6)', () => {
   const s = defaultSave();
   eq(s.cash, 250, 'cash');
   eq(s.missionIndex, 0, 'missionIndex');
@@ -357,7 +358,14 @@ test('default save shape (v5)', () => {
   eq(s.stats.bizEarned, 0, 'bizEarned');
   eq(s.stats.sideDone, 0, 'sideDone');
   eq(s.stats.sideEarned, 0, 'sideEarned');
-  eq(SAVE_VERSION, 5, 'SAVE_VERSION');
+  eq(s.districts.length, 0, 'districts');
+  eq(SAVE_VERSION, 6, 'SAVE_VERSION');
+});
+test('v5 save sanitises to v6 (districts default, bad ids dropped)', () => {
+  const v5 = { cash: 500, missionIndex: 3, districts: [1, 1, 9, -1, 'x', 5], stats: { missionsDone: 2 } };
+  const s = sanitizeSave(v5);
+  eq(JSON.stringify(s.districts), '[1,5]', 'only valid unique ids kept');
+  eq(sanitizeSave({}).districts.length, 0, 'a v5 save without districts gets an empty list');
 });
 test('v4 save sanitises to v5 (side stats default)', () => {
   const v4 = { cash: 500, missionIndex: 3, stats: { missionsDone: 2, bizEarned: 120 } };
@@ -656,6 +664,129 @@ test('side: all spots are reachable on foot', () => {
     spots.push([-180 + Math.sin(a) * 14, -180 + Math.cos(a) * 14]);
   }
   for (const [x, z] of spots) ok(reachable(g.world, x, z, 8), 'reachable (' + x + ',' + z + ')');
+});
+
+// ---------------------------------------------------------------------------
+// 2c. Districts + Club Solmar interior.
+// ---------------------------------------------------------------------------
+function districtGame() {
+  const g = fakeGame();
+  g.districts = new DistrictsManager(g);
+  return g;
+}
+test('districts: table has 6 unique ids, names and colours', () => {
+  eq(DISTRICTS.length, 6, '6 districts');
+  eq(new Set(DISTRICTS.map((d) => d.id)).size, 6, 'unique ids');
+  eq(new Set(DISTRICTS.map((d) => d.name)).size, 6, 'unique names');
+  for (const d of DISTRICTS) ok(/^#[0-9a-f]{6}$/.test(d.color), 'colour ' + d.name);
+});
+test('districts: districtAt maps every named place', () => {
+  eq(districtAt(200, 60).name, 'MARINA', 'marina');
+  eq(districtAt(150, -130).name, 'DOCKS', 'docks');
+  eq(districtAt(0, -140).name, 'DOWNTOWN', 'downtown');
+  eq(districtAt(-150, -150).name, 'AIRFIELD', 'airfield');
+  eq(districtAt(-140, 120).name, 'OLD TOWN', 'old town');
+  eq(districtAt(0, 30).name, 'CENTRAL', 'central');
+  eq(districtAt(-150, 150).name, 'OLD TOWN', 'safehouse is old town');
+  eq(districtAt(180, 150).name, 'MARINA', 'marina hotel');
+  eq(districtAt(180, -150).name, 'DOCKS', 'docks corner');
+  eq(districtAt(250, 152).name, 'MARINA', 'boat dock is marina');
+});
+test('districts: spawn is Old Town, gate signs clear every collider, room has 5 colliders', () => {
+  const g = districtGame();
+  eq(g.districts.current, 5, 'spawn (-140,140) is OLD TOWN');
+  eq(g.districts.gateSpots.length, 5, '5 gate signs');
+  for (const spot of g.districts.gateSpots) {
+    for (const c of g.world.colliders) {
+      ok(!(spot.x > c.minX - 3 && spot.x < c.maxX + 3 && spot.z > c.minZ - 3 && spot.z < c.maxZ + 3), 'gate ' + spot.name + ' clears colliders');
+    }
+  }
+  eq(g.districts.roomColliders.length, 5, 'bar + 3 tables + jukebox');
+  eq(g.districts.bounds(), null, 'no bounds outside');
+});
+test('districts: crossing into a new district records it once', () => {
+  const g = districtGame();
+  eq(g.save.districts.length, 0, 'none visited at spawn');
+  g.player.pos.set(200, 0, 60);
+  g.districts.update();
+  eq(g.districts.current, 1, 'now MARINA');
+  eq(g.save.districts.length, 1, 'one visited');
+  ok(g.notes.some((n) => n.includes('MARINA')), 'welcome toast');
+  eq(g.saved, true, 'save written');
+  g.player.pos.set(0, 0, 30);
+  g.districts.update();
+  eq(g.save.districts.length, 2, 'two visited');
+  const notes = g.notes.length;
+  g.player.pos.set(200, 0, 60);
+  g.districts.update();
+  eq(g.save.districts.length, 2, 'no double count');
+  eq(g.notes.length, notes, 'no repeat toast');
+});
+test('districts: E at the casino door enters Club Solmar, E at the room door leaves', () => {
+  const g = districtGame();
+  g.player.pos.set(0, 0, -163);
+  eq(g.districts.prompt(), 'Enter Club Solmar', 'prompt at the door');
+  eq(g.districts.tryInteract(), true, 'E enters');
+  eq(g.districts.inside, true, 'inside');
+  eq(g.player.pos.x, 600, 'teleported to the room');
+  eq(g.player.pos.z, 600, 'at the entry spot');
+  eq(g.districts.prompt(), null, 'no prompt mid-room');
+  eq(g.districts.hudLine(), 'CLUB SOLMAR', 'HUD line inside');
+  eq(JSON.stringify(g.districts.mapPlayer(g.player)), JSON.stringify({ x: CLUB.doorX, z: CLUB.doorZ, heading: g.player.heading }), 'minimap shows the door while inside');
+  g.player.pos.set(600, 0, 606);
+  eq(g.districts.prompt(), 'Leave Club Solmar', 'prompt at the room door');
+  eq(g.districts.tryInteract(), true, 'E leaves');
+  eq(g.districts.inside, false, 'outside again');
+  eq(g.player.pos.x, 0, 'back at the casino door');
+  eq(g.player.pos.z, -163, 'same spot');
+});
+test('districts: entry blocked during a mission, a side job, a fare, a cutscene, or in a car', () => {
+  const g = districtGame();
+  g.player.pos.set(0, 0, -163);
+  g.missions = { state: 'active' };
+  eq(g.districts.tryInteract(), false, 'mission active blocks');
+  g.missions = { state: 'idle' };
+  g.side = { job: { kind: 'rampage' } };
+  eq(g.districts.tryInteract(), false, 'side job blocks');
+  g.side = null;
+  g.taxi = { fare: { timer: 30 } };
+  eq(g.districts.tryInteract(), false, 'fare blocks');
+  g.taxi = null;
+  g.cutscenes = { active: true };
+  eq(g.districts.tryInteract(), false, 'cutscene blocks');
+  g.cutscenes = { active: false };
+  g.player.inCar = { speed: 0 };
+  eq(g.districts.tryInteract(), false, 'in a car blocks');
+  g.player.inCar = null;
+  eq(g.districts.tryInteract(), true, 'clear to enter');
+});
+test('districts: Player updateOnFoot clamps to the room bounds when inside, city bounds outside', () => {
+  const g = districtGame();
+  const p = new Player(fakeScene(), 0, 0);
+  p.pos.set(608, 0, 600);
+  p.updateOnFoot(1, { x: 1, z: 0 }, true, [], ROOM);
+  eq(p.pos.x, 611, 'east wall holds');
+  p.pos.set(600, 0, 604);
+  p.updateOnFoot(1, { x: 0, z: 1 }, true, [], ROOM);
+  eq(p.pos.z, 607, 'south wall holds');
+  p.pos.set(592, 0, 596);
+  p.updateOnFoot(1, { x: -1, z: -1 }, true, [], ROOM);
+  ok(p.pos.x >= 589 && p.pos.z >= 593, 'west + north walls hold');
+  p.pos.set(259, 0, 0);
+  p.updateOnFoot(1, { x: 1, z: 0 }, true, [], null);
+  eq(p.pos.x, 260, 'city edge still clamps without bounds');
+});
+test('districts: HUD line names the district and the visit count', () => {
+  const g = districtGame();
+  eq(g.districts.hudLine(), 'OLD TOWN · 0/6', 'spawn line');
+  g.player.pos.set(200, 0, 60);
+  g.districts.update();
+  eq(g.districts.hudLine(), 'MARINA · 1/6', 'marina line');
+});
+test('HUD: district line shows in the mods row', () => {
+  const hud = new HUD(buildCity(fakeScene()));
+  hud.update(0.016, hudState({ district: 'MARINA · 1/6' }));
+  ok(document.getElementById('mods').textContent.includes('MARINA · 1/6'), 'district in mods');
 });
 
 // ---------------------------------------------------------------------------
