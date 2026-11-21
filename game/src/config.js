@@ -174,6 +174,7 @@ export const MISSION_META = [
   { id: 14, name: 'Lose the Tail',    type: 'story',      reward: 3200, brief: 'Vane is on your tail. Sixty seconds - do not let him touch you.' },
   { id: 15, name: 'Midnight Grand Prix', type: 'race',    reward: 3500, brief: 'Six checkpoints, two rivals, one start line. Beat Vane\u2019s crew around the city - 150 seconds.', track: 'grandprix' },
   { id: 16, name: 'The Last Ferry',   type: 'story',      reward: 5000, brief: 'Steal the fastest car in town, make the ferry at the docks, then a five-star escape to the airfield. The last job.' },
+  { id: 17, name: 'Harbor Run',       type: 'story',      reward: 4000, brief: 'A boat, four buoys, two minutes. Run the bay delivery before the tide turns.' },
 ];
 
 export const STORY_INTRO = [
@@ -378,6 +379,16 @@ export const PARKED_SPOTS = [
   { defKey: 'brisa', color: 0xc94f43, x: -30, z: -120, heading: -Math.PI / 2 },
   { defKey: 'moto', color: 0x2b3a55, x: 180, z: 90, heading: Math.PI },
 ];
+
+// Boats: moored at the marina waterline, bow out to sea; dockX is where
+// Jay stands to board (E) and steps off. Bounds clamp the boat to open
+// water; the pier/bridge rects are no-go for the hull.
+export const BOAT_DOCKS = [
+  { x: 256, z: 128, dockX: 250, heading: Math.PI / 2, color: 0x3a7d5a },
+  { x: 256, z: 152, dockX: 250, heading: Math.PI / 2, color: 0xc94f43 },
+  { x: 256, z: 176, dockX: 250, heading: Math.PI / 2, color: 0x4a6fa5 },
+];
+export const BOAT_BOUNDS = { minX: 254, maxX: 600, minZ: -420, maxZ: 420 };
 
 // Birds: flocks circling the lighthouse and the pier. Each flock is an
 // anchor point, a count and an orbit radius band.

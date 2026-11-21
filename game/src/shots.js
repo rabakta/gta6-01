@@ -54,6 +54,24 @@ export function stageShot(game, shot) {
     g.peds.spawn(14, { x: -30, z: 30 }, 90);
     g.missions.startMission(0);
     g.player.camDist = 8;
+  } else if (shot === 'boat') {
+    // Boat gameplay: Jay throttles a marina boat across the bay toward
+    // a delivery beacon, the city skyline and lighthouse ahead. Staged
+    // directly, not via M17: the mission would need a 120 s drive.
+    // (Same ~0.15s rule as the chase shot: stage it, don't drive it.)
+    const boat = g.boats[1] || g.boats[0];
+    g.enterCar(boat);
+    boat.pos.set(420, 0.1, 140);
+    boat.heading = -Math.PI / 2; // west, toward the marina skyline
+    boat.speed = 18;
+    boat.syncMesh();
+    g.player.pos.copy(boat.pos); // see chase: staging reads player.pos
+    g.player.heading = boat.heading;
+    g.player.camYaw = boat.heading + Math.PI; // see chase: no mid-swing camera
+    g.keys.KeyW = true;
+    g.missions.placeMarker(300, 140); // dead ahead, in frame with the marina
+    document.getElementById('mission-box')?.classList.add('collapsed');
+    g.player.camDist = 11;
   } else if (shot === 'chase') {
     // Driving fast with a 4-star wanted level: two BCPD cars, the heli,
     // and a roadblock across the road ahead. The cover shot.

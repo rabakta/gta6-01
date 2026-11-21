@@ -3,7 +3,7 @@
 // building collision, oriented-box car collision. Traffic follows the
 // road lines; police pursue and the helicopter orbits from three stars.
 import * as THREE from 'three';
-import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT } from './config.js';
+import { CAR_DEFS, UPGRADES, ROADBLOCK_MIN_WANTED, ROADBLOCK_COUNT, BOAT_BOUNDS } from './config.js';
 import { clamp, angleDiff, dist2, pick, randomPointInCircle } from './utils.js';
 import { nearestRoadCoord, resolveCircleCollisions } from './city.js';
 import { barrierTexture, glowTexture, clearcoatNormalMap } from './textures.js';
@@ -526,6 +526,85 @@ export class Car {
     this.health = this.maxHealth;
     this.smoking = false;
   }
+}
+
+// Boats: hull + cabin from primitives, no AI drivers ever (CR-1: a
+// player-driven vehicle must never be AI-driven in the same frame).
+// They float on the sea plane and clamp to the bay bounds, so they can
+// neither leave the water nor beach onto land; pier/bridge rects are
+// no-go for the hull. Same drive(dt, fwd, strafe, colliders) shape as
+// Car so Game.update can drive either. Hull meshes share geometry and
+// plain materials across boats — no textures, no shadows, no wake
+// system — so the boats add no per-frame cost beyond a few dozen
+// flops and zero allocation per frame.
+const BOAT_NOGO = [
+  { minX: 250, maxX: 298, minZ: -45, maxZ: -35 }, // pier
+  { minX: 208, maxX: 322, minZ: -10, maxZ: 10 }, // bridge deck
+];
+const boatHullGeo = new THREE.BoxGeometry(2.2, 0.7, 5.6);
+const boatBowGeo = new THREE.BoxGeometry(1.6, 0.6, 1.2);
+const boatCabinGeo = new THREE.BoxGeometry(1.6, 0.9, 1.8);
+const boatGlassGeo = new THREE.BoxGeometry(1.5, 0.45, 0.15);
+const boatMotorGeo = new THREE.BoxGeometry(0.5, 0.7, 0.4);
+const boatWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f0e8, roughness: 0.6 });
+const boatDarkMat = new THREE.MeshStandardMaterial({ color: 0x1c2733, roughness: 0.4, metalness: 0.3 });
+function makeBoatMesh(color) {
+  const g = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2 });
+  const hull = new THREE.Mesh(boatHullGeo, hullMat); hull.position.y = 0.45; g.add(hull);
+  const bow = new THREE.Mesh(boatBowGeo, hullMat); bow.position.set(0, 0.45, 2.7); bow.rotation.y = Math.PI / 4; g.add(bow);
+  const cabin = new THREE.Mesh(boatCabinGeo, boatWhiteMat); cabin.position.set(0, 1.25, -0.4); g.add(cabin);
+  const glass = new THREE.Mesh(boatGlassGeo, boatDarkMat); glass.position.set(0, 1.3, 0.55); glass.rotation.x = -0.3; g.add(glass);
+  const motor = new THREE.Mesh(boatMotorGeo, boatDarkMat); motor.position.set(0, 0.5, -2.9); g.add(motor);
+  g.userData.body = hull;
+  return g;
+}
+export class Boat {
+  constructor(color, x, z, heading) {
+    this.kind = 'boat'; this.isBoat = true; this.color = color;
+    this.pos = new THREE.Vector3(x, 0.1, z);
+    this.heading = heading; this.speed = 0; this.steer = 0;
+    this.topSpeed = 24; this.accel = 10;
+    this.eff = { topSpeed: 24 }; this.def = this.eff;
+    this.upgrades = { engine: 0, armor: 0, tires: 0 };
+    this.dead = false; this.health = 1000; this.maxHealth = 1000;
+    this.smoking = false; this.ai = null; this.driver = null;
+    this.exploded = false; this.length = 7; this.width = 2.6;
+    this.mesh = makeBoatMesh(color);
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.y = this.heading;
+  }
+  drive(dt, fwd, strafe, _colliders) {
+    if (fwd > 0) this.speed = Math.min(this.topSpeed, this.speed + this.accel * dt);
+    else if (fwd < 0) this.speed = Math.max(-this.topSpeed * 0.35, this.speed - this.accel * 0.6 * dt);
+    else this.speed -= this.speed * Math.min(1, 1.4 * dt); // water drag
+    const sn = clamp(Math.abs(this.speed) / this.topSpeed, 0, 1);
+    this.steer = strafe * (0.5 + 0.5 * (1 - sn));
+    this.heading -= this.steer * (0.35 + 0.55 * sn) * Math.sign(this.speed || 1) * dt;
+    this.pos.x += Math.sin(this.heading) * this.speed * dt;
+    this.pos.z += Math.cos(this.heading) * this.speed * dt;
+    this.pos.x = clamp(this.pos.x, BOAT_BOUNDS.minX, BOAT_BOUNDS.maxX);
+    this.pos.z = clamp(this.pos.z, BOAT_BOUNDS.minZ, BOAT_BOUNDS.maxZ);
+    resolveCircleCollisions(BOAT_NOGO, this.pos, 2.2);
+    this.pos.x = clamp(this.pos.x, BOAT_BOUNDS.minX, BOAT_BOUNDS.maxX);
+    this.pos.z = clamp(this.pos.z, BOAT_BOUNDS.minZ, BOAT_BOUNDS.maxZ);
+    this.syncMesh();
+  }
+  syncMesh() {
+    this.mesh.position.copy(this.pos);
+    this.mesh.rotation.y = this.heading;
+    this.mesh.rotation.z = -this.steer * clamp(Math.abs(this.speed) / this.topSpeed, 0, 1) * 0.08;
+  }
+  brakeLight() {}
+  updateHeadlights() {}
+  applyUpgrades() {}
+  damage(amount) {
+    this.health -= amount;
+    if (this.health <= this.maxHealth * 0.3 && !this.smoking) this.smoking = true;
+    if (this.health <= 0 && !this.dead) { this.dead = true; return true; }
+    return false;
+  }
+  repair() { this.health = this.maxHealth; this.smoking = false; }
 }
 
 // Traffic: cars cruise one road line, turn at intersections, brake ahead.

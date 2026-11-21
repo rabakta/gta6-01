@@ -127,6 +127,17 @@ export const MISSIONS = [
       { type: 'timed', x: -180, z: -180, radius: 12, seconds: 120, wanted: 5, text: '5-star escape — reach the airfield in 120s' },
     ],
   },
+  {
+    id: 17, name: 'Harbor Run', intro: 'Miko: "Ro needs a crate across the bay. Boat\'s at the marina — four buoys, two minutes."', outro: 'Crate delivered dry. Ro owes you one, Jay.',
+    steps: [
+      { type: 'goto', x: 250, z: 152, radius: 10, text: 'Go to the marina dock' },
+      { type: 'boat_board', text: 'Board a boat (E)' },
+      { type: 'boat_delivery', timeLimit: 120, checkpoints: [
+        { x: 400, z: -60 }, { x: 520, z: 60 }, { x: 460, z: 240 }, { x: 330, z: 300 },
+      ], text: 'Run the buoys across the bay' },
+      { type: 'goto', x: 250, z: 152, radius: 10, text: 'Bring the boat back to the marina' },
+    ],
+  },
 ];
 
 export class MissionManager {
@@ -171,6 +182,7 @@ export class MissionManager {
       if (step.type === 'race_circuit' || step.type === 'race_sprint' || step.type === 'race_drift') {
         t += '  CHECKPOINT ' + (this.raceIndex + 1) + '/' + (this.raceTrack?.checkpoints?.length || 0) + '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
       }
+      if (step.type === 'boat_delivery') t += '  CHECKPOINT ' + (this.boatIndex + 1) + '/' + step.checkpoints.length + '  [' + Math.max(0, Math.ceil(this.timer)) + 's]';
       if (step.type === 'evade' && this.caughtTimer > 0) t += '  - SHAKE HIM!';
       if (step.type === 'eliminate') t += '  (' + this.kills + '/' + step.count + ')';
       return 'MISSION ' + (this.active + 1) + ' - ' + this.meta.name + ': ' + t;
@@ -261,6 +273,11 @@ export class MissionManager {
         r.raceIndex = 0;
         this.racers.push(r);
       }
+      this.placeMarker(step.checkpoints[0].x, step.checkpoints[0].z);
+    }
+    if (step.type === 'boat_delivery') {
+      this.timer = step.timeLimit || 120;
+      this.boatIndex = 0;
       this.placeMarker(step.checkpoints[0].x, step.checkpoints[0].z);
     }
     if (step.type === 'evade') {
@@ -367,7 +384,9 @@ export class MissionManager {
 
     // If player is in a car, save car info
     let carInfo = null;
-    if (p.inCar) {
+    // A boat is never the saved car: restoreCityState spawns from
+    // CAR_DEFS, which has no 'boat' — saving one would crash the load.
+    if (p.inCar && !p.inCar.isBoat) {
       carInfo = {
         defKey: p.inCar.defKey,
         health: p.inCar.health,
@@ -686,6 +705,21 @@ export class MissionManager {
           continue;
         }
         this.raceDrive(r, target, dt);
+      }
+    } else if (step && step.type === 'boat_board') {
+      if (g.player.inCar && g.player.inCar.isBoat) this.nextStep();
+    } else if (step && step.type === 'boat_delivery') {
+      this.timer -= dt;
+      if (this.timer <= 0) { this.fail('Out of time'); return; }
+      const cp = step.checkpoints[this.boatIndex];
+      if (cp && dist2(p.x, p.z, cp.x, cp.z) < (cp.radius || 12)) {
+        this.boatIndex++;
+        g.audio.blip(1320, 0.12, 0.2);
+        if (this.boatIndex >= step.checkpoints.length) { this.nextStep(); return; }
+        this.clearMarker();
+        const next = step.checkpoints[this.boatIndex];
+        this.placeMarker(next.x, next.z);
+        g.notify('Checkpoint ' + this.boatIndex + '/' + step.checkpoints.length);
       }
     }
 

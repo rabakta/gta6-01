@@ -1,9 +1,9 @@
 // BRISA BAY — boot, game loop and the glue between systems.
 import * as THREE from 'three';
-import { WEAPONS, MISSION_META, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT, GANGS } from './config.js';
+import { WEAPONS, MISSION_META, RESPRAY_COLORS, UPGRADES, PARKED_SPOTS, PERFORMER_SPOT, GANGS, BOAT_DOCKS } from './config.js';
 import { clamp, dist2, mulberry32, pick, fmtMoney, theftWitnessed } from './utils.js';
 import { buildCity, nearestRoadCoord } from './city.js';
-import { Car, TrafficManager, PoliceManager, carsOverlap } from './vehicles.js';
+import { Car, Boat, TrafficManager, PoliceManager, carsOverlap } from './vehicles.js';
 import { Player } from './player.js';
 import { PedManager } from './pedestrians.js';
 import { Combat, ParticleSystem } from './combat.js';
@@ -71,6 +71,7 @@ class Game {
     // Rio can steal (see spawnParked).
     this.birds = new Birds(this.scene);
     this.parked = [];
+    this.boats = [];
     // Headlight pool: real SpotLights for the driven car, plus a soft
     // glow mesh for the cheap fill. SpotLights cast shadows at night.
     this.headlightPool = new THREE.Group();
@@ -144,6 +145,7 @@ class Game {
     this.spawnParked('brisa', 0x4a6fa5, 60, -60, 0);
     this.spawnParked('vento', 0xe8c84a, -60, 60, Math.PI);
     this.spawnParked('taxi', 0xf2a007, 120, -120, Math.PI / 2);
+    for (const d of BOAT_DOCKS) this.spawnBoat(d.color, d.x, d.z, d.heading);
     this.spawnParked('brisa', 0xd94f43, -180, -180, 0);
     this.peds.spawnGroup(-132, 130, 3);
     this.peds.spawnGroup(-110, 150, 2);
@@ -354,12 +356,21 @@ class Game {
     this.parked.push(car);
     return car;
   }
+  // A boat moored at the marina: no AI drivers, ever — it joins
+  // this.boats, so E sees it and the managers never touch it (CR-1).
+  spawnBoat(color, x, z, heading) {
+    const boat = new Boat(color, x, z, heading);
+    boat.kind = 'boat';
+    this.scene.add(boat.mesh);
+    this.boats.push(boat);
+    return boat;
+  }
   removeCar(car) {
     this.scene.remove(car.mesh);
     if (this.player.inCar === car) this.player.inCar = null;
   }
   allCars() {
-    const list = [...this.traffic.cars, ...this.police.cars, ...this.police.blockerCars(), ...this.parked];
+    const list = [...this.traffic.cars, ...this.police.cars, ...this.police.blockerCars(), ...this.parked, ...this.boats];
     if (this.missions.rival) list.push(this.missions.rival);
     if (this.missions.tail) list.push(this.missions.tail);
     if (this.missions.targetCar) list.push(this.missions.targetCar);
@@ -368,10 +379,12 @@ class Game {
   }
 
   nearestCar(maxDist) {
-    let best = null, bd = maxDist;
+    let best = null, bd = Infinity;
     for (const c of this.allCars()) {
+      // Boats moor ~6 m off the dock: board from the dock, not by wading.
+      const reach = c.isBoat ? maxDist + 5 : maxDist;
       const d = dist2(this.player.pos.x, this.player.pos.z, c.pos.x, c.pos.z);
-      if (d < bd) { bd = d; best = c; }
+      if (d < reach && d < bd) { bd = d; best = c; }
     }
     return best;
   }
@@ -398,9 +411,24 @@ class Game {
     this.audio.blip(660, 0.1, 0.12);
   }
 
-  exitCar() {
+  exitCar(force = false) {
     const car = this.player.inCar;
     if (!car) return;
+    // Boats: step off only at a dock/mooring point. Mid-water E is
+    // ignored with a hint — the player would otherwise strand in the
+    // bay. Forced exits (respawn, explosion) always go through.
+    if (car.isBoat && !force) {
+      const dock = BOAT_DOCKS.find((d) => dist2(car.pos.x, car.pos.z, d.x, d.z) < 14);
+      if (!dock) { this.notify('Mendekat ke dermaga dulu.'); return; }
+      this.player.inCar = null;
+      car.driver = null;
+      car.speed = 0;
+      this.player.pos.set(dock.dockX, 0, dock.z);
+      this.player.heading = car.heading;
+      this.player.mesh.visible = true;
+      this.player.camYaw = car.heading + Math.PI;
+      return;
+    }
     this.player.inCar = null;
     car.driver = null;
     car.speed = 0;
@@ -638,7 +666,7 @@ class Game {
   }
   respawn() {
     // Exit the car first, or exitCar overwrites the hospital spot.
-    if (this.player.inCar) this.exitCar();
+    if (this.player.inCar) this.exitCar(true);
     const h = this.world.places.hospital;
     this.player.reset(h.x, h.z + 10);
     this.setWanted(0);
@@ -811,7 +839,7 @@ class Game {
       if (car.health <= 0 && !car.exploded) {
         car.exploded = true;
         this.combat.explode({ x: car.pos.x, y: 1, z: car.pos.z }, 9, this.allCars().concat(this.peds.peds), this.audio);
-        this.exitCar();
+        this.exitCar(true);
         this.notify('Your ride just blew up.');
         if (this.missions.state === 'active') this.missions.fail('Ride destroyed');
       }
