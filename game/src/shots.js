@@ -8,6 +8,7 @@
 // collectible parcel, and street is the busy-city cover: Rio on a Moto
 // weaving toward a dwelling bus. Used only for the entry's screenshots and
 // for testing the new systems.
+import * as THREE from 'three';
 import { signTexture, glowTexture } from './textures.js';
 import { GANGS } from './config.js';
 export function shotParam() {
