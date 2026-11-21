@@ -138,15 +138,13 @@ export const SHOPS = [
   { kind: 'food',   name: 'CLUCKIN BELL', pos: [30, 150],    blurb: 'Hot food restores health' },
 ];
 
-// ---------------------------------------------------------------------------
 // Radio: tiny step sequencers. `root` is a MIDI note, `scale` semitone steps.
-// A fourth station, SOL MAR 101, so R cycles through four moods.
-// ---------------------------------------------------------------------------
 export const RADIO_STATIONS = [
   { name: 'SOL 98.5',    desc: 'Latin groove', bpm: 96,  root: 57, scale: [0, 2, 3, 7, 10], bass: [0, 0, 3, 5] },
   { name: 'NEON DRIVE',  desc: 'Synthwave',   bpm: 112, root: 45, scale: [0, 2, 3, 7, 8],  bass: [0, 0, 8, 7] },
   { name: 'PALM FM',     desc: 'Lo-fi beach', bpm: 76,  root: 52, scale: [0, 3, 5, 7, 10], bass: [0, 5, 3, 7] },
   { name: 'SOL MAR 101', desc: 'Island reggae', bpm: 88, root: 50, scale: [0, 2, 5, 7, 10], bass: [0, 0, 5, 3] },
+  { name: 'TALK BRISA',  desc: 'Harbor talk', bpm: 60,  root: 45, scale: [0], bass: [0], talk: true },
 ];
 
 // ---------------------------------------------------------------------------

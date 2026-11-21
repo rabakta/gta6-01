@@ -27,7 +27,6 @@ class Game {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.2)); // cap pixel ratio
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap; // faster than PCFSoftShadowMap
-    // Filmic tone mapping + sRGB, so the sunset grades like a photo.
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1098,6 +1097,7 @@ class Game {
       inCar: !!p.inCar,
       prompt: this.promptText,
       radio: this.audio.stationName(),
+      radioLine: this.audio.radioLine(),
       objective: this.objectiveText(),
       clockSec: this.clockSec % 86400,
       player: { x: p.pos.x, z: p.pos.z, heading: p.heading },

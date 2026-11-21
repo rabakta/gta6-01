@@ -37,6 +37,7 @@ const HUD_CSS = [
   '#armor-bar{width:220px;height:9px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.4);border-radius:4px;overflow:hidden;margin-top:3px}',
   '#armor-fill{height:100%;width:0%;background:linear-gradient(90deg,#2f7fc9,#7ec2f2)}',
   '#radio-flash{top:200px;left:50%;transform:translateX(-50%);font-size:26px;font-weight:900;color:#ffd98a;opacity:0;transition:opacity .3s;text-shadow:0 2px 8px rgba(0,0,0,0.9)}',
+  '#radio-line{top:244px;left:50%;transform:translateX(-50%);max-width:640px;text-align:center;font-size:17px;font-weight:700;color:#fff;opacity:0;transition:opacity .3s;text-shadow:0 2px 8px rgba(0,0,0,0.9)}',
   '#health-bar.low #health-fill{background:linear-gradient(90deg,#c92f2f,#ff6b5e)}',
   '#health-bar.hit{box-shadow:0 0 0 2px rgba(255,60,40,0.9)}',
   '#cash.gain{color:#b8ffd0}',
@@ -136,6 +137,7 @@ export class HUD {
     this.touch = null;
     this.lastCash = null;
     this.lastRadio = '';
+    this.lastRadioLine = '';
     this.radioTimer = 0;
     this.bannerTimer = 0;
     this.splashTimer = 0;
@@ -165,6 +167,7 @@ export class HUD {
     this.promptEl = mk('prompt', 'panel');
     this.bannerEl = mk('banner', 'panel');
     this.radioEl = mk('radio-flash', 'panel');
+    this.radioLineEl = mk('radio-line', 'panel');
     this.splashEl = mk('splash');
     const hb = document.getElementById('health-bar');
     this.healthBar = hb;
@@ -497,9 +500,25 @@ export class HUD {
       }
       this.lastRadio = state.radio;
     }
+    // The DJ line / ad / talk segment rides under the station flash and
+    // refreshes it: it changes every bar, so the flash follows the radio.
+    const line = state.radioLine || '';
+    if (line !== this.lastRadioLine) {
+      this.lastRadioLine = line;
+      if (line) {
+        this.radioLineEl.textContent = line;
+        this.radioLineEl.style.opacity = '1';
+        this.radioTimer = 2;
+      } else {
+        this.radioLineEl.style.opacity = '0';
+      }
+    }
     if (this.radioTimer > 0) {
       this.radioTimer -= dt;
-      if (this.radioTimer <= 0) this.radioEl.style.opacity = '0';
+      if (this.radioTimer <= 0) {
+        this.radioEl.style.opacity = '0';
+        this.radioLineEl.style.opacity = '0';
+      }
     }
     this.el.radio.textContent = '♪ ' + state.radio;
     this.el.objective.textContent = state.objective;

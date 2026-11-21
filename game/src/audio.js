@@ -4,9 +4,47 @@
 // blips. The engine hum and the police siren are continuous loops whose
 // volume follows the game. The taxi fares reuse the existing SFX — blip for
 // a pickup, jingle for a delivery, fail for a lost fare — so no new sounds
-// were needed. The radio cycles four stations, and upgrades, roadblocks and
+// were needed. The radio cycles five stations, and upgrades, roadblocks and
 // pickups each have their own sting.
 import { RADIO_STATIONS } from './config.js';
+
+// Radio personality: a DJ per station, fake ads, and a talk-show host.
+// Text only — the lines ride the HUD radio flash; no voice, no new audio
+// engine. TALK BRISA's lines are its talk segments (host + caller).
+export const RADIO_DJS = [
+  { dj: 'MARINA', lines: [
+    'Buenos dias, Brisa! Traffic on the bridge is a parking lot.',
+    'That was Los Corales. Next: a song for everyone stuck in traffic.',
+    'Caller says Jay Torres is back in town. Big if true.',
+  ] },
+  { dj: 'VOLT', lines: [
+    'Night drive, synth loud. This one is for the midnight racers.',
+    'Brisa after dark — neon, salt air, and a V8 somewhere.',
+    'If your engine is louder than this song, you are winning.',
+  ] },
+  { dj: 'KAI', lines: [
+    'Slow morning, slow waves. Coffee on the balcony, Brisa.',
+    'Lo-fi for the long way home. No rush, the tide waits.',
+    'Shout-out to the night-shift nurses at Coral Clinic.',
+  ] },
+  { dj: 'REEF', lines: [
+    'Island time, island bass. The marina never sleeps, it just sways.',
+    'Big love to the fishermen out before sunrise. Respect.',
+    'That riddim is older than the bridge. Still slaps.',
+  ] },
+  { dj: 'OCE', talk: true, lines: [
+    'OCE: "Is the Grand Prix rigged?" Caller, the league says no. Ask Vane.',
+    'CALLER: "My bus never comes." OCE: "Walk, love. It is Brisa."',
+    'OCE: Tonight — roadblocks: safety or theatre? Lines are open.',
+    'CALLER: "Jay Torres owes me fifty bucks." OCE: "Join the queue."',
+  ] },
+];
+export const RADIO_ADS = [
+  'AD: Torres Tuning — engine, tyres, armour. Garage 24, Coral Row.',
+  'AD: Solmar Casino — where the tide brings your luck back. 18+.',
+  'AD: Marina Fish Shack — catch of the day, fried golden. Open till late.',
+  'AD: BCPD reminds you: a car is not yours if the keys are in it.',
+];
 
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
@@ -32,6 +70,12 @@ export class AudioEngine {
     this.sirenGain = null;
     this.sirenLfo = null;
     this.started = false;
+    this.lineIdx = 0; // rotating DJ line within the station
+    this.line = ''; // current HUD radio line (DJ banter, ad, or talk)
+    this.loopCount = 0; // completed 32-step bars on this station
+    this.adSteps = 0; // steps left in an ad break (music paused)
+    this.adIdx = 0;
+    this.setStation(0);
   }
 
   // Must be called from a user gesture at least once (start button, a key).
@@ -77,6 +121,35 @@ export class AudioEngine {
     const n = RADIO_STATIONS.length;
     this.station = ((i % n) + n) % n;
     this.step = 0;
+    this.loopCount = 0;
+    this.adSteps = 0;
+    this.lineIdx = 0;
+    this.line = this.djLine();
+  }
+
+  // The line the HUD flash shows for the current station. '' while the
+  // radio is off, so the flash hides instead of going stale.
+  radioLine() { return this.radioOn ? this.line : ''; }
+
+  djLine() {
+    const d = RADIO_DJS[this.station];
+    if (!d) return '';
+    const line = d.lines[this.lineIdx % d.lines.length];
+    return d.talk ? line : d.dj + ': ' + line;
+  }
+
+  // A 32-step bar just ended: rotate the DJ line, or every fourth bar
+  // run an ad break (one bar of silence + a jingle + the ad line).
+  onBarEnd() {
+    this.loopCount++;
+    if (this.radioOn && this.loopCount % 4 === 0 && !RADIO_STATIONS[this.station].talk) {
+      this.adSteps = 32;
+      this.line = RADIO_ADS[this.adIdx++ % RADIO_ADS.length];
+      this.jingle();
+      return;
+    }
+    this.lineIdx++;
+    this.line = this.djLine();
   }
 
   setRadioOn(on) { this.radioOn = !!on; }
@@ -94,8 +167,10 @@ export class AudioEngine {
     const st = RADIO_STATIONS[this.station];
     const stepDur = 60 / st.bpm / 2; // eighth notes
     while (this.nextStepTime < this.ctx.currentTime + 0.12) {
-      if (this.radioOn) this.playStep(st, this.step, this.nextStepTime, stepDur);
+      if (this.adSteps > 0) this.adSteps--; // ad break: music paused
+      else if (this.radioOn) this.playStep(st, this.step, this.nextStepTime, stepDur);
       this.step = (this.step + 1) % 32;
+      if (this.step === 0) this.onBarEnd();
       this.nextStepTime += stepDur;
     }
   }
@@ -113,10 +188,11 @@ export class AudioEngine {
       const note = st.root + 12 + scale[deg];
       this.tone(midiToFreq(note), t, stepDur * 0.9, 'sine', 0.07, this.radioGain);
     }
-    // Snare crack on beats 4 and 12 of the 16-step bar.
-    if (step % 16 === 4 || step % 16 === 12) this.noise(t, 0.09, 0.12, 1800, this.radioGain);
+    // Snare crack on beats 4 and 12 of the 16-step bar. Talk radio keeps
+    // a soft bed only — no snare, no hats under the host.
+    if (!st.talk && (step % 16 === 4 || step % 16 === 12)) this.noise(t, 0.09, 0.12, 1800, this.radioGain);
     // Hat tick on the off-beats.
-    if (step % 2 === 1) this.noise(t, 0.03, 0.05, 6000, this.radioGain);
+    if (!st.talk && step % 2 === 1) this.noise(t, 0.03, 0.05, 6000, this.radioGain);
   }
 
   tone(freq, t, dur, type, vol, dest) {

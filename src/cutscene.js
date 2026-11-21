@@ -354,10 +354,12 @@ export class CutsceneManager {
     }
   }
 
-  // Convenience: play mission intro cutscene
-  playMissionIntro(missionName, brief, onComplete) {
+  // Convenience: play mission intro cutscene. `lines` is optional
+  // [speaker, line] dialogue played after the brief — the story round's
+  // character lines. Existing callers pass three args; nothing changes.
+  playMissionIntro(missionName, brief, onComplete, lines = []) {
     this.createSkipButton();
-    this.play([
+    const steps = [
       {
         type: 'camera',
         toPos: new THREE.Vector3(0, 50, 80),
@@ -377,20 +379,24 @@ export class CutsceneManager {
         duration: 3.5,
         position: 'bottom',
       },
-      {
-        type: 'camera',
-        toPos: new THREE.Vector3().copy(this.game.camera.position),
-        toTarget: new THREE.Vector3().copy(this.game.controls?.target || new THREE.Vector3()),
-        duration: 1.5,
-        easing: 'easeOutCubic',
-      },
-    ], onComplete);
+    ];
+    for (const [who, line] of lines) {
+      steps.push({ type: 'text', text: who + ': "' + line + '"', duration: 2.6, position: 'bottom' });
+    }
+    steps.push({
+      type: 'camera',
+      toPos: new THREE.Vector3().copy(this.game.camera.position),
+      toTarget: new THREE.Vector3().copy(this.game.controls?.target || new THREE.Vector3()),
+      duration: 1.5,
+      easing: 'easeOutCubic',
+    });
+    this.play(steps, onComplete);
   }
 
   // Convenience: play mission outro cutscene
-  playMissionOutro(missionName, reward, onComplete) {
+  playMissionOutro(missionName, reward, onComplete, lines = []) {
     this.createSkipButton();
-    this.play([
+    const steps = [
       {
         type: 'camera',
         toPos: new THREE.Vector3(0, 40, 60),
@@ -410,14 +416,18 @@ export class CutsceneManager {
         duration: 2.5,
         position: 'bottom',
       },
-      {
-        type: 'camera',
-        toPos: new THREE.Vector3().copy(this.game.camera.position),
-        toTarget: new THREE.Vector3().copy(this.game.controls?.target || new THREE.Vector3()),
-        duration: 1.0,
-        easing: 'easeOutCubic',
-      },
-    ], onComplete);
+    ];
+    for (const [who, line] of lines) {
+      steps.push({ type: 'text', text: who + ': "' + line + '"', duration: 2.6, position: 'bottom' });
+    }
+    steps.push({
+      type: 'camera',
+      toPos: new THREE.Vector3().copy(this.game.camera.position),
+      toTarget: new THREE.Vector3().copy(this.game.controls?.target || new THREE.Vector3()),
+      duration: 1.0,
+      easing: 'easeOutCubic',
+    });
+    this.play(steps, onComplete);
   }
 
   // Convenience: race countdown + start

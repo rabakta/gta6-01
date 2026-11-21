@@ -1,4 +1,4 @@
-// BRISA BAY — the story: 16 chapters of Jason "Jay" Torres' return to
+// BRISA BAY — the story: 17 missions of Jason "Jay" Torres' return to
 // Brisa Bay. Chapter 1 (missions 1-5) focuses on street racing and
 // rebuilding the Torres Tuning crew. Missions 6-16 continue the story.
 // Race missions load special race maps (circuit/sprint/drift/grandprix).
@@ -140,6 +140,30 @@ export const MISSIONS = [
   },
 ];
 
+// Mission dialogue: character lines the cutscenes play after the brief
+// (intro) and after the reward (outro). [speaker, line] pairs — Jay,
+// Miko, Ro, Vane, Lena (dock fixer) and Sarge (BCPD). Text only; the
+// cutscene steps are skipped when a mission has no entry.
+export const MISSION_DIALOGUE = [
+  { intro: [['MIKO', 'Five years, Jay. The city did not wait for you.'], ['JAY', 'Good. I did not come back to wait.']], outro: [['MIKO', 'Same Jay. Same trouble. Welcome home.']] },
+  { intro: [['MIKO', 'Show me you still got it. Three laps, no excuses.'], ['JAY', 'You talk too much. Start the clock.']], outro: [['MIKO', 'Okay. Maybe the five years did not slow you down.']] },
+  { intro: [['RO', 'Parts at the docks. Tide comes in, cops come out. Move.'], ['JAY', 'Tide, cops, Ro — same order as always.']], outro: [['RO', 'Clean run. The garage owes you one, Jay.']] },
+  { intro: [['RO', 'Garage 24. Engine, tyres, armour — I build, you pay.'], ['JAY', 'Pay with what? I just got out.']], outro: [['RO', 'Family discount. Do not tell the others.']] },
+  { intro: [['VANE', 'Torres? The league eats rookies for breakfast.'], ['JAY', 'Then I hope you brought lunch money.']], outro: [['MIKO', 'Top three. The league knows your name now.']] },
+  { intro: [['LENA', 'Yellow Furia at the marina. Keys in it. Do not ask why.'], ['JAY', 'I never ask why. I just drive.']], outro: [['RO', 'That Furia purrs like it knows it is stolen.']] },
+  { intro: [['LENA', 'Package at the docks. Grab it, bring it back. Quietly.'], ['JAY', 'Quietly. Me. Sure.']], outro: [['LENA', 'No sirens, no holes in the package. Nice.']] },
+  { intro: [['MIKO', 'Vane jumped me, Jay. My ribs still remember.'], ['JAY', 'Then his Vento is about to remember me.']], outro: [['JAY', 'Tell Vane: next time, he jumps me instead.']] },
+  { intro: [['RO', 'Warehouse, one case, guards with guns. On foot.'], ['JAY', 'On foot. Like the old days, but older.']], outro: [['RO', 'Case is ours. You still move like a ghost, Jay.']] },
+  { intro: [['SARGE', 'All units: Torres on the bridge. Do not let him cross.'], ['JAY', 'Ninety seconds. One bridge. No brakes.']], outro: [['MIKO', 'Three stars and you still made it. Unbelievable.']] },
+  { intro: [['LENA', 'Caminar truck, two roadblocks, one airfield. Drive.'], ['JAY', 'Roadblocks are just suggestions with sirens.']], outro: [['RO', 'Truck is through. The airfield crew says thanks.']] },
+  { intro: [['RO', 'Solmar vault. Five stars on the way out. Get home, Jay.'], ['JAY', 'Five stars. I have had worse odds at cards.']], outro: [['MIKO', 'The vault is empty and you are alive. That is a win.']] },
+  { intro: [['LENA', 'Parcel at the docks, airfield deadline. Seventy-five seconds.'], ['JAY', 'Sunset, two stars, one parcel. Easy money.']], outro: [['LENA', 'Delivered with time to spare. The tide is impressed.']] },
+  { intro: [['VANE', 'Sixty seconds, Torres. My bumper knows your paint.'], ['JAY', 'Sixty seconds. Try to keep up, Vane.']], outro: [['JAY', 'He lost me. He always loses me.']] },
+  { intro: [['VANE', 'Six checkpoints, two rivals, one start line. Mine.'], ['JAY', 'Yours? I do not see your name on the trophy yet.']], outro: [['MIKO', 'Grand Prix champion. Torres Tuning is back, Jay.']] },
+  { intro: [['LENA', 'Fastest car in town, one ferry, then five stars to the airfield.'], ['JAY', 'The last job. I have heard that line before.']], outro: [['RO', 'Ferry made it. Whatever comes next, we are ready.']] },
+  { intro: [['LENA', 'Boat, four buoys, two minutes. The tide turns fast, Jay.'], ['JAY', 'Two minutes. The bay is mine tonight.']], outro: [['LENA', 'Four buoys, one delivery, zero splashes on my shoes.']] },
+];
+
 export class MissionManager {
   constructor(game) {
     this.game = game;
@@ -221,7 +245,7 @@ export class MissionManager {
       this.beginStep();
       this.game.audio.jingle();
       this.game.notify('Mission ' + (index + 1) + ': ' + meta.name + ' - ' + meta.brief);
-    });
+    }, MISSION_DIALOGUE[index]?.intro || []);
     return true;
   }
 
@@ -525,7 +549,7 @@ export class MissionManager {
       this.active = -1;
       this.stepIndex = 0;
       this.raceMode = false;
-    });
+    }, MISSION_DIALOGUE[this.active]?.outro || []);
   }
 
   fail(reason) {
