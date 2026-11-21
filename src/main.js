@@ -19,6 +19,7 @@ import { TouchControls } from './touch.js';
 import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
 import { shotParam, stageShot } from './shots.js';
 import { glowTexture } from './textures.js';
+import { PropertiesManager } from './properties.js';
 
 class Game {
   constructor() {
@@ -65,6 +66,7 @@ class Game {
     this.pickups = new PickupManager(this.scene, this.world);
     // The side activities — taxi fares and collectible packages.
     this.taxi = new TaxiManager(this);
+    this.props = new PropertiesManager(this);
     this.collectibles = new CollectibleManager(this.scene, this.save);
     // Birds over the lighthouse and the pier, and the parked cars
     // Rio can steal (see spawnParked).
@@ -474,7 +476,6 @@ class Game {
     }
   }
 
-  // Rival cars drive like traffic, only faster and angrier.
   trafficLikeDrive(car, dt, targetSpeed) {
     const ai = car.ai || (car.ai = { axis: 'x', dir: 1, targetSpeed, wait: 0 });
     let blocked = false;
@@ -510,7 +511,6 @@ class Game {
     if (hit && hit.killed) this.addWanted(1);
   }
 
-  // Hitting a gang member raises that gang's heat: wider aggro, more men.
   onGangHit(ped) {
     const gi = GANGS.indexOf(ped.gang);
     if (gi < 0) return;
@@ -554,7 +554,6 @@ class Game {
         this.shopButton('ammo', 'Ammo refill - $50', 'Top up the current gun') +
         this.shopButton('armor', 'Body armor - $300', '+50 armor');
     } else if (shop.kind === 'garage') {
-      // The garage sells upgrades that change the car for real.
       html = this.upgradeButton('armor') + this.upgradeButton('engine') + this.upgradeButton('tires') +
         this.shopButton('respray', 'Respray - $150', 'New paint, less heat') +
         this.shopButton('repair', 'Repair - $200', 'Fix your ride up');
@@ -562,6 +561,7 @@ class Game {
       html = this.shopButton('taco', 'Taco - $20', '+25 health') +
         this.shopButton('burrito', 'Burrito - $40', '+50 health');
     }
+    html += this.props.shopRow(shop);
     this.hud.showShop(shop.name + ' - ' + fmtMoney(this.save.cash), html);
   }
   shopButton(id, label, desc) {
@@ -597,8 +597,9 @@ class Game {
       this.player.armor = Math.min(100, this.player.armor + 50);
       s.armor = this.player.armor;
       this.notify('Armor on. +50.');
+    } else if (id === 'biz') {
+      this.props.buy(this.nearShop);
     } else if (id === 'up-armor' || id === 'up-engine' || id === 'up-tires') {
-      // Garage upgrades — pay, level up, fit to the current ride.
       const key = id.slice(3);
       const lvl = (s.upgrades && s.upgrades[key]) || 0;
       if (lvl >= 2) { this.notify('Already at max level.'); return; }
@@ -612,7 +613,6 @@ class Game {
     } else if (id === 'respray') {
       if (!this.player.inCar) { this.notify('Bring a car to respray.'); return; }
       if (!spend(150)) return;
-      // Repaint the body mesh (kept in userData).
       const body = this.player.inCar.mesh.userData.body;
       body.material = body.material.clone();
       body.material.color.setHex(pick(mulberry32(Date.now() % 100000), RESPRAY_COLORS));
@@ -804,8 +804,6 @@ class Game {
     if (p.inCar) {
       const car = p.inCar;
       car.drive(dt, fwd, strafe, this.world.colliders);
-      // Space is the handbrake: hard stop, brake lights on. The touch
-      // BRAKE button holds the same line.
       const handbrake = !!this.keys.Space || this.touchBrake;
       if (handbrake) car.speed *= Math.max(0, 1 - 4 * dt);
       p.pos.copy(car.pos);
@@ -813,7 +811,6 @@ class Game {
       this.audio.setEngine(clamp(Math.abs(car.speed) / car.eff.topSpeed, 0, 1), true);
       // Brake lights: S while rolling forward, or the handbrake.
       car.brakeLight((fwd < 0 && car.speed > 0.5) || handbrake);
-      // Exhaust puffs at the tailpipe under throttle.
       const rearX = car.pos.x - Math.sin(car.heading) * (car.length / 2 + 0.3);
       const rearZ = car.pos.z - Math.cos(car.heading) * (car.length / 2 + 0.3);
       if (fwd > 0 && Math.abs(car.speed) > 8) {
@@ -964,6 +961,7 @@ class Game {
     this.missions.update(dt);
     this.pickups.update(dt, p.pos, this);
     this.taxi.update(dt);
+    this.props.update(dt);
     this.collectibles.update(dt, p.pos, this);
     this.combat.update(dt);
     this.particles.update(dt);
@@ -1098,6 +1096,8 @@ class Game {
       prompt: this.promptText,
       radio: this.audio.stationName(),
       radioLine: this.audio.radioLine(),
+      biz: this.props.hudLine(),
+      bizOwned: this.props.owned(),
       objective: this.objectiveText(),
       clockSec: this.clockSec % 86400,
       player: { x: p.pos.x, z: p.pos.z, heading: p.heading },

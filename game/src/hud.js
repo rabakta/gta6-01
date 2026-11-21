@@ -8,6 +8,7 @@
 // untouched and the dossier never sees a byte of it.
 import { CITY, WANTED_MAX, STORY_INTRO, MISSION_META, WEAPONS } from './config.js';
 import { fmtMoney, fmtTime } from './utils.js';
+import { shopIndex } from './properties.js';
 
 // Driving gear from signed speed (m/s) and the car's top speed: R rolling
 // back, N at a standstill, then 1..5 up the speed range.
@@ -469,13 +470,15 @@ export class HUD {
     this.el['health-num'].textContent = Math.max(0, Math.round(state.health));
     this.el.armor.textContent = state.armor > 0 ? 'ARMOR ' + Math.round(state.armor) : '';
     this.armorFill.style.width = Math.max(0, Math.min(100, state.armor)) + '%';
-    // Garage mods: short tags, only when something is fitted.
+    // Garage mods: short tags, only when something is fitted. Owned
+    // businesses ride the same line: BIZ n · +$/h.
     const mods = state.mods || { armor: 0, engine: 0, tires: 0 };
     const tags = [];
     if (mods.armor > 0) tags.push('ARMOUR ' + mods.armor);
     if (mods.engine > 0) tags.push('ENGINE ' + mods.engine);
     if (mods.tires > 0) tags.push('TYRES ' + mods.tires);
-    this.el.mods.textContent = tags.length > 0 ? 'MODS: ' + tags.join(' · ') : '';
+    const biz = state.biz || '';
+    this.el.mods.textContent = (tags.length > 0 ? 'MODS: ' + tags.join(' · ') : '') + (biz ? (tags.length > 0 ? ' · ' : '') + biz : '');
     const stars = '★'.repeat(state.wanted) + '☆'.repeat(WANTED_MAX - state.wanted);
     this.el.stars.textContent = stars;
     // Any heat pulses; at three stars and up it pulses red.
@@ -618,12 +621,14 @@ export class HUD {
       ctx.fillRect(Math.max(0, beachX1), 0, Math.max(0, seaX1 - beachX1), S);
     }
 
-    // Shops (green squares)
-    ctx.fillStyle = '#7ee2a8';
+    // Shops (green squares); a shop Jay owns reads gold, so his rents
+    // are findable on the map at a glance.
+    const bizOwned = state.bizOwned || [];
     for (const s of this.world.shops) {
       const [x, z] = worldToMap(s.x, s.z);
       if (this.inMapView(x, z, S)) {
         const size = 5 * scale;
+        ctx.fillStyle = bizOwned.indexOf(shopIndex(s)) >= 0 ? '#ffd34d' : '#7ee2a8';
         ctx.fillRect(x - size / 2, z - size / 2, size, size);
       }
     }

@@ -6,8 +6,9 @@
 // game a weapon it does not own, an upgrade level past the cap, a package id
 // that does not exist, or a chapter past the end of the story.
 import { SAVE_KEY, MISSION_META, WEAPONS, COLLECTIBLES } from './config.js';
+import { propEntry } from './properties.js';
 
-export const SAVE_VERSION = 3; // v3: the save gains the packages list and fare stats
+export const SAVE_VERSION = 4; // v4: the save gains owned businesses
 
 export function defaultSave() {
   return {
@@ -21,6 +22,8 @@ export function defaultSave() {
     // Garage upgrades: each 0..2 (see UPGRADES in config.js).
     upgrades: { armor: 0, engine: 0, tires: 0 },
     ownedCars: [],
+    // Owned businesses, by index into SHOPS (see PROPERTIES).
+    properties: [],
     // Collectible packages found, by index into COLLECTIBLES (0..19).
     packages: [],
     stats: {
@@ -34,6 +37,8 @@ export function defaultSave() {
       faresDone: 0,
       faresEarned: 0,
       packagesFound: 0,
+      // v4: rent collected from owned businesses.
+      bizEarned: 0,
     },
   };
 }
@@ -69,6 +74,16 @@ export function sanitizeSave(raw) {
     clean.currentWeapon = raw.currentWeapon;
   }
   if (Array.isArray(raw.ownedCars)) clean.ownedCars = raw.ownedCars.filter((c) => typeof c === 'string');
+  // v4: businesses — keep only real for-sale shop indices, deduplicated.
+  // A v3 save has no field at all, which sanitises to an empty list.
+  if (Array.isArray(raw.properties)) {
+    const seen = new Set();
+    clean.properties = raw.properties.filter((i) => {
+      if (!Number.isInteger(i) || propEntry(i) === undefined || seen.has(i)) return false;
+      seen.add(i);
+      return true;
+    });
+  }
   // v3: packages — keep only valid ids, deduplicated, in order. A v2 save
   // has no field at all, which sanitises to an empty list: a returning
   // player simply finds the packages fresh.
