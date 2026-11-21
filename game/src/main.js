@@ -379,6 +379,17 @@ class Game {
   enterCar(car) {
     this.player.inCar = car;
     car.driver = 'player';
+    // CR-1: freeze the car's AI brain while the player drives it — the
+    // managers skip player-driven cars, and the stuck tracker is reset
+    // to this spot so it cannot fire the moment the player gets out.
+    if (car.ai) {
+      car.ai.wait = 0;
+      car.ai.dwell = 0;
+      car.ai.stuck = 0;
+      car.ai.stop = null;
+      car.ai.px = car.pos.x;
+      car.ai.pz = car.pos.z;
+    }
     // Whatever Rio drives gets his garage upgrades — armour, engine, tyres.
     car.applyUpgrades(this.save.upgrades || { armor: 0, engine: 0, tires: 0 });
     this.player.mesh.visible = false;
@@ -393,6 +404,18 @@ class Game {
     this.player.inCar = null;
     car.driver = null;
     car.speed = 0;
+    // CR-1: re-arm the AI at the exit spot — the car rejoins traffic
+    // from here, with no stale wait/dwell/stuck state from before the
+    // theft.
+    if (car.ai) {
+      car.ai.wait = 0;
+      car.ai.dwell = 0;
+      car.ai.stuck = 0;
+      car.ai.stop = null;
+      car.ai.lastStop = null;
+      car.ai.px = car.pos.x;
+      car.ai.pz = car.pos.z;
+    }
     const side = car.heading + Math.PI / 2;
     this.player.pos.set(car.pos.x + Math.sin(side) * 2.2, 0, car.pos.z + Math.cos(side) * 2.2);
     this.player.heading = car.heading;

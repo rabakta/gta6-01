@@ -154,6 +154,7 @@ export class MissionManager {
     this.raceTrack = null;
     this.savedCityState = null;
     this.raceMode = false;
+    this.raceResult = null; // { position, total, finished } of the last race
   }
 
   get meta() { return this.active >= 0 ? MISSION_META[this.active] : null; }
@@ -201,6 +202,10 @@ export class MissionManager {
     // Play mission intro cutscene
     const meta = MISSION_META[index];
     this.game.cutscenes.playMissionIntro(meta.name, meta.brief, () => {
+      // CR-2: the mission may have been failed, quit or lost during the
+      // ~11 s intro — if it is no longer this mission, the intro ending
+      // must not start (or complete) anything.
+      if (this.active !== index || this.state !== 'active') return;
       this.beginStep();
       this.game.audio.jingle();
       this.game.notify('Mission ' + (index + 1) + ': ' + meta.name + ' - ' + meta.brief);
@@ -209,6 +214,10 @@ export class MissionManager {
   }
 
   beginStep() {
+    // CR-2: a pending intro/countdown callback can fire after the
+    // mission was failed mid-cutscene (active === -1) — never begin a
+    // step for a mission that is no longer running.
+    if (this.active < 0) return;
     this.clearMarker();
     const step = this.currentStep;
     if (!step) { this.complete(); return; }
@@ -466,6 +475,10 @@ export class MissionManager {
   }
 
   complete() {
+    // CR-2: completing a mission that is no longer running (failed or
+    // quit mid-intro) must not pay a reward or play an outro — meta is
+    // null once active === -1.
+    if (!this.meta) return;
     this.clearMarker();
     const reward = this.meta.reward;
     const name = this.meta.name;
@@ -499,14 +512,36 @@ export class MissionManager {
   fail(reason) {
     this.clearMarker();
     const name = this.meta ? this.meta.name : 'Mission';
+    // H-9: snapshot the race standings BEFORE cleanup removes the
+    // racers, and hide the race HUD — a failed race leaves no timer,
+    // no AI and no frozen HUD behind.
+    const inRace = this.raceMode || this.state === 'race_mode';
+    let raceLines = [];
+    if (inRace && this.raceTrack) {
+      const pos = this.racePosition();
+      this.raceResult = { position: pos, total: this.racers.length + 1, finished: false };
+      raceLines = ['Position ' + pos + '/' + (this.racers.length + 1)];
+      if (this.game.hud) this.game.hud.hideRaceHUD();
+      // Get the player out of any race car first: removeCar() would
+      // leave them invisible on foot (it nulls inCar but never shows
+      // the player mesh again).
+      const g = this.game;
+      if (g.player.inCar && (g.player.inCar === this.targetCar || this.racers.includes(g.player.inCar))) {
+        g.exitCar();
+      }
+    }
     this.state = 'failed';
     this.failReason = reason;
+    // H-9: stop the race dead — the timer, the track and the
+    // checkpoint loop all end here, on every end path.
+    this.timer = 0;
+    this.raceTrack = null;
     this.game.audio.fail();
     this.game.notify('Mission failed - ' + reason + '. Press M to retry.');
     if (this.game.state === 'playing' && this.game.hud) {
       this.game.hud.showMissionSplash({
         kind: 'fail', title: 'MISSION FAILED', name,
-        lines: [reason, 'Press M to retry'],
+        lines: [reason, ...raceLines, 'Press M to retry'],
       });
     }
     this.cleanupEntities();
@@ -703,6 +738,9 @@ export class MissionManager {
             // AI finished race
             if (this.raceLap <= track.laps) {
               this.fail('An opponent beat you to the finish!');
+              // H-9: the race is over — stop here, or the AI keeps
+              // driving (and the timer keeps ticking) after the fail.
+              return;
             }
             continue;
           }
@@ -738,30 +776,49 @@ export class MissionManager {
     car.drive(dt, throttle, steer, this.game.world.colliders);
   }
 
+  // Player's current race position (1 = leading), from lap/checkpoint
+  // progress — the same rule the HUD uses. Read before cleanup removes
+  // the racers.
+  racePosition() {
+    if (!this.raceTrack) return 1;
+    let pos = 1;
+    for (const r of this.racers) {
+      if (r.raceLap > this.raceTrack.laps || (r.raceLap === this.raceTrack.laps && r.raceIndex >= this.raceTrack.checkpoints.length)) {
+        pos++;
+      }
+    }
+    return pos;
+  }
+
   raceFinish() {
     // Player finished race
     const track = this.raceTrack;
     const g = this.game;
 
-    // Check position vs AI
-    let playerPos = 1;
-    for (const r of this.racers) {
-      if (r.raceLap > track.laps || (r.raceLap === track.laps && r.raceIndex >= track.checkpoints.length)) {
-        playerPos++;
-      }
-    }
-
-    // Determine reward based on position and track type
-    let reward = this.meta.reward;
-    if (track.type === 'drift') {
-      // Drift scoring would go here
-    }
+    const playerPos = this.racePosition();
+    this.raceResult = { position: playerPos, total: this.racers.length + 1, finished: true };
 
     g.notify('Race finished! Position: ' + playerPos);
     if (g.hud) g.hud.hideRaceHUD();
 
-    // Exit race mode, restore city
+    // CR-3 / H-9: leave race_mode for real — the state, the timer and
+    // the track all end here, so the M15 post-race goto runs as a
+    // normal step and a won race can never fail "Out of time" later.
+    this.state = 'active';
     this.raceMode = false;
+    this.raceTrack = null;
+    this.timer = 0;
+
+    // CR-3: get the player out of the race car BEFORE the race scene
+    // is torn down — otherwise they keep driving a disposed, invisible
+    // car around the city (player.mesh stays hidden, inCar stays set).
+    if (g.player.inCar === this.targetCar) g.exitCar();
+
+    // Remove the race grid from the race scene, then exit the race map
+    // and restore the city (re-entering the player's saved car, if any).
+    for (const r of this.racers) g.removeCar(r);
+    this.racers = [];
+    if (this.targetCar) { g.removeCar(this.targetCar); this.targetCar = null; }
     g.exitRaceMap();
     this.restoreCityState();
 

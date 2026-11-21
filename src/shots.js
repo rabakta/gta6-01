@@ -642,6 +642,9 @@ export function stageShot(game, shot) {
     g.player.camPitch = 0.15;
     g.player.camDist = 8;
     g.keys.KeyW = true;
+    // CR-4: the lane-clear loop below uses fx/fz — define them here,
+    // mirroring the other chase-ambush branches.
+    const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
     // Clear lane
     for (const c of [...g.traffic.cars]) {
       const dx = c.pos.x - car.pos.x, dz = c.pos.z - car.pos.z;

@@ -584,6 +584,11 @@ export class TrafficManager {
     this.dwelling = [];
     const gone = [];
     for (const car of this.cars) {
+      // CR-1: a stolen car is driven by the player, not the AI — skip
+      // every AI path for it (despawn, wait, bus dwell, lane snap,
+      // junction turns, stuck-teleport) or the AI fights the player's
+      // steering and can teleport the car with them still inside it.
+      if (car.driver === 'player') continue;
       const ai = car.ai || (car.ai = { axis: 'x', dir: 1, targetSpeed: 8, wait: 0 });
       ai.age = (ai.age || 0) + dt;
       // Despawn: an old car far from the player leaves the scene instead
@@ -723,7 +728,8 @@ export class TrafficManager {
     }
     // No two traffic cars share the same space: push overlapping pairs
     // apart along the line between them (length-aware, see carsOverlap).
-    const live = this.cars.filter((c) => !c.dead);
+    // CR-1: the player's stolen car is not shoved by this pass either.
+    const live = this.cars.filter((c) => !c.dead && c.driver !== 'player');
     for (let i = 0; i < live.length; i++) {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j];
@@ -886,13 +892,19 @@ export class PoliceManager {
     // Roadblocks come first: they are not counted in `want`.
     this.ensureRoadblocks(wanted, playerPos, playerHeading);
     // Spawn / despawn to match the wanted level (one new unit per 2.5s).
+    // CR-1: only AI-driven units count toward the wanted cap — a stolen
+    // interceptor the player is driving must never be popped when the
+    // heat drops, and must not block fresh spawns while it is held.
+    const aiCars = this.cars.filter((c) => c.driver !== 'player');
     this.spawnTimer -= dt;
-    if (this.cars.length < want && this.spawnTimer <= 0) {
+    if (aiCars.length < want && this.spawnTimer <= 0) {
       this.spawnTimer = 2.5;
       this.spawnOne(playerPos);
     }
-    while (this.cars.length > want) {
-      const c = this.cars.pop();
+    while (aiCars.length > want) {
+      const c = aiCars.pop();
+      const i = this.cars.indexOf(c);
+      if (i >= 0) this.cars.splice(i, 1);
       this.scene.remove(c.mesh);
     }
     // Chase: steer at the player's predicted position, ram on contact.
@@ -900,6 +912,9 @@ export class PoliceManager {
     // missions.js): same angleDiff, same 1.6 gain, same sign.
     for (const car of this.cars) {
       if (car.dead) continue;
+      // CR-1: a stolen interceptor is driven by the player, not chased
+      // by its own AI.
+      if (car.driver === 'player') continue;
       const dx = playerPos.x - car.pos.x, dz = playerPos.z - car.pos.z;
       const d = Math.sqrt(dx * dx + dz * dz) || 1;
       const targetHeading = Math.atan2(dx, dz);
