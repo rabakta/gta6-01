@@ -13,10 +13,7 @@ const ROOF_COLS = ['#6b5a4a', '#8a6b52', '#5a6b7a', '#7a4a3a'];
 // The four central intersections get plaza tiles instead of a crosswalk.
 export const PLAZA_SPOTS = [[0, 0], [0, 60], [60, 0], [60, 60]];
 
-// Match a facade's painted storeys and window columns to a building's
-// real size: short towers get 3 storeys, mid ones 5, tall ones 8; narrow
-// towers 4 columns, wide ones 6. Pure function, so the logic tests can
-// pin the buckets without building the city.
+// Facade buckets by size: short 3 storeys, mid 5, tall 8; narrow 4 cols, wide 6.
 export function facadeBucket(h, w) {
   return {
     floors: h < 14 ? 3 : h < 28 ? 5 : 8,
@@ -24,10 +21,8 @@ export function facadeBucket(h, w) {
   };
 }
 
-// Facade materials, cached by (pastel, seed, floors, cols): towers that
-// share a bucket share one material, so the texture count stays bounded
-// while every tower shows the right number of storeys. The material's
-// emissive map makes its lit windows glow at sunset.
+// Facade materials, cached by (pastel, seed, floors, cols) so towers
+// sharing a bucket share one material; emissive map glows windows at sunset.
 // HD: displacementMap, aoMap, detailNormalMap, clearcoatNormalMap
 const facadeCache = new Map();
 function facadeMaterial(base, seed, floors, cols) {
@@ -338,9 +333,7 @@ export function buildCity(scene) {
     scene.add(hRoad);
   }
 
-  // Kerb strips along every road edge, so the asphalt ends in a kerb
-  // instead of melting into the pavement. The two axes sit at different
-  // heights (0.09 / 0.095) so they never z-fight where they cross.
+  // Kerb strips along every road edge (axes at 0.09 / 0.095 so they never z-fight).
     const kerbTex = kerbTexture();
     const kerbMat = new THREE.MeshStandardMaterial({ 
       map: kerbTex.map, 
@@ -469,12 +462,9 @@ export function buildCity(scene) {
       const cx = (lines[ix] + lines[ix + 1]) / 2;
       const cz = (lines[iz] + lines[iz + 1]) / 2;
       const towers = 1 + Math.floor(rng() * 3);
-      // The safehouse lives in this cell (ix 0, iz 5). Seeded towers
-      // here buried it — and with it the first mission's target, the
-      // player spawn and an armour pickup, all unreachable. Only the
-      // scene adds and the collider are skipped for this cell; the meshes
-      // are still built and the rng is still consumed exactly as before,
-      // so every other cell keeps its earlier layout.
+      // Safehouse cell (ix 0, iz 5): skip scene adds + collider only — the
+      // meshes are still built and rng still consumed, so other cells keep
+      // their layout. (Seeded towers here once buried the safehouse.)
       const skipCell = ix === 0 && iz === 5;
       for (let t = 0; t < towers; t++) {
         const w = 14 + rng() * 16;
@@ -485,9 +475,7 @@ export function buildCity(scene) {
         const x = cx + ox;
         const z = cz + oz;
         const pi = Math.floor(rng() * PASTEL.length);
-        // The facade's storeys and columns match this tower's size,
-        // and the roof colour is picked from the cell — deterministic, so
-        // the shared rng stream is untouched and the layout cannot shift.
+        // Facade bucket + roof colour from the cell: deterministic, rng stream untouched.
         const { floors, cols } = facadeBucket(h, w);
         const tower = new THREE.Mesh(boxGeo, facadeMaterial(PASTEL[pi], 100 + pi, floors, cols));
         tower.scale.set(w, h, d);
@@ -769,26 +757,45 @@ export function buildCity(scene) {
   }
   
   function plantPalm(x, z, s = 1) {
+    [x, z] = offRoad(x, z, 0.6);
     world.palms.push(plantPalmAt(x, z, s, 0.6));
   }
-  
-  // No tree on a road: a trunk on a centre line pins any car on that line.
-  // Nudge a position off any road line (within 3 m) by 12 m into the block.
-  function offRoad(x, z) {
+
+  // A spot is clear when no collider covers it. Buildings are already in
+  // colliders when trees plant, as are palms planted earlier, so this also
+  // keeps a moved palm from stacking on another one.
+  function spotClear(x, z, half) {
+    for (const c of colliders) if (x - half < c.maxX && x + half > c.minX && z - half < c.maxZ && z + half > c.minZ) return false;
+    return true;
+  }
+  // Move v to 12 m from line l on its own side; if blocked, try the other
+  // side, then 18 m, then 8.5 m (just off the road), then 24 m out.
+  function nudge(l, v, other, half, isX) {
+    const s = v >= l ? 1 : -1;
+    for (const d of [12, -12, 18, -18, 8.5, -8.5, 24, -24]) {
+      const nv = l + d * s;
+      if (spotClear(isX ? nv : other, isX ? other : nv, half)) return nv;
+    }
+    return l + 12 * s;
+  }
+  // No tree on a road: a trunk within 8 m of a line (7 m half-width + 1)
+  // stands on asphalt. Nudge it off, but only where the road runs
+  // (|other| <= 220), so beach palms past the road end stay on the sand.
+  function offRoad(x, z, half) {
     for (const l of roadLines()) {
-      if (Math.abs(x - l) < 3) x += 12;
-      if (Math.abs(z - l) < 3) z += 12;
+      if (Math.abs(x - l) < 8 && Math.abs(z) <= 220) x = nudge(l, x, z, half, true);
+      if (Math.abs(z - l) < 8 && Math.abs(x) <= 220) z = nudge(l, z, x, half, false);
     }
     return [x, z];
   }
 
   function plantTree(x, z, s = 1) {
-    [x, z] = offRoad(x, z);
+    [x, z] = offRoad(x, z, 1.2);
     plantPalmAt(x, z, s, 1.2);
   }
-  
+
   function plantPine(x, z, s = 1) {
-    [x, z] = offRoad(x, z);
+    [x, z] = offRoad(x, z, 1);
     plantPalmAt(x, z, s, 1);
   }
 
@@ -882,10 +889,8 @@ export function buildCity(scene) {
   let lampIndex = 0;
   for (const l of lines) {
     for (let v = -180; v <= 180; v += 60) {
-      // Lamps sit on the inner corner of each intersection, 8 m from
-      // both road lines — 1 m off the asphalt. The old spots sat ON a
-      // road line, which only showed once lamps got colliders: cars
-      // wedged against them (the race rivals stopped dead at (-180, 68)).
+      // Lamps on the inner corner of each intersection, 8 m from both lines
+      // (old spots sat ON a line and wedged cars; race rivals stopped dead).
       const off = v < 0 ? 8 : -8;
       for (const [x, z] of [[l + 8, v + off], [v + off, l + 8]]) {
         const pole = new THREE.Mesh(poleGeo, poleMat);
@@ -905,10 +910,7 @@ export function buildCity(scene) {
     }
   }
 
-  // Shops: a sign board + a lit box at each shop corner. A neon tube
-  // sign hangs under the board, so each shop glows in its own colour.
-  // A real awning over the shopfront, a lit window, and a glow halo
-  // behind the neon — the shopfront gets depth instead of a flat box.
+  // Shops: sign board + lit box + neon tube + awning + lit window + halo per shop.
   const neonColors = { guns: '#ff4fd8', garage: '#4fd8ff', food: '#ffb84f' };
   const awningColors = { guns: 0xc94f43, garage: 0x4fd8ff, food: 0xf2a007 };
   for (const shop of SHOPS) {
