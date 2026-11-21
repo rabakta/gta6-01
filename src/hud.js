@@ -478,7 +478,10 @@ export class HUD {
     if (mods.engine > 0) tags.push('ENGINE ' + mods.engine);
     if (mods.tires > 0) tags.push('TYRES ' + mods.tires);
     const biz = state.biz || '';
-    this.el.mods.textContent = (tags.length > 0 ? 'MODS: ' + tags.join(' · ') : '') + (biz ? (tags.length > 0 ? ' · ' : '') + biz : '');
+    const side = state.side || '';
+    let modsText = (tags.length > 0 ? 'MODS: ' + tags.join(' · ') : '') + (biz ? (tags.length > 0 ? ' · ' : '') + biz : '');
+    if (side) modsText += (modsText ? ' · ' : '') + side;
+    this.el.mods.textContent = modsText;
     const stars = '★'.repeat(state.wanted) + '☆'.repeat(WANTED_MAX - state.wanted);
     this.el.stars.textContent = stars;
     // Any heat pulses; at three stars and up it pulses red.

@@ -24,6 +24,7 @@ import { weaponSlotList, gearFor, HUD } from '../game/src/hud.js';
 import { joystickAxes, TouchControls } from '../game/src/touch.js';
 import { clampVolume, AudioEngine, RADIO_DJS, RADIO_ADS } from '../game/src/audio.js';
 import { Player } from '../game/src/player.js';
+import { SideManager } from '../game/src/side.js';
 
 // The game uses requestAnimationFrame in a few HUD paths (toast, prompt,
 // armour bar); node has none, so stub it globally.
@@ -344,7 +345,7 @@ test('collectibles: 20, unique names, $5000 bonus', () => {
 // 2. Save / load.
 // ---------------------------------------------------------------------------
 console.log('save:');
-test('default save shape (v4)', () => {
+test('default save shape (v5)', () => {
   const s = defaultSave();
   eq(s.cash, 250, 'cash');
   eq(s.missionIndex, 0, 'missionIndex');
@@ -354,7 +355,16 @@ test('default save shape (v4)', () => {
   eq(s.stats.packagesFound, 0, 'packagesFound');
   eq(s.properties.length, 0, 'properties');
   eq(s.stats.bizEarned, 0, 'bizEarned');
-  eq(SAVE_VERSION, 4, 'SAVE_VERSION');
+  eq(s.stats.sideDone, 0, 'sideDone');
+  eq(s.stats.sideEarned, 0, 'sideEarned');
+  eq(SAVE_VERSION, 5, 'SAVE_VERSION');
+});
+test('v4 save sanitises to v5 (side stats default)', () => {
+  const v4 = { cash: 500, missionIndex: 3, stats: { missionsDone: 2, bizEarned: 120 } };
+  const s = sanitizeSave(v4);
+  eq(s.stats.sideDone, 0, 'sideDone defaults');
+  eq(s.stats.sideEarned, 0, 'sideEarned defaults');
+  eq(s.stats.bizEarned, 120, 'bizEarned kept');
 });
 test('v2 save sanitises to v3 (packages + fare stats default)', () => {
   const v2 = {
@@ -488,6 +498,164 @@ test('hudLine: empty when nothing owned, BIZ n + rate when owned', () => {
   g.save.cash = 5000;
   props.buy({ x: -30, z: 150 });
   eq(props.hudLine(), 'BIZ 1 · +$40/h', 'one business');
+});
+
+// ---------------------------------------------------------------------------
+// 2b. Side activities: rampage, stunt jumps, vigilante, payphone.
+// ---------------------------------------------------------------------------
+function sideGame() {
+  const g = fakeGame();
+  g.particles = { burst() {} };
+  g.side = new SideManager(g);
+  return g;
+}
+test('side: rampage starts 6 VEX targets, 60 s timer', () => {
+  const g = sideGame();
+  g.player.pos.set(-180, 0, -180);
+  eq(g.side.tryInteract(), true, 'E starts the rampage');
+  eq(g.side.job.kind, 'rampage', 'rampage job');
+  eq(g.side.job.targets.length, 6, '6 targets');
+  eq(g.side.job.timer, 60, '60 s');
+  ok(g.side.job.targets.every((t) => t.role === 'gang' && t.armed), 'gang role, armed');
+  ok(g.side.job.targets.every((t) => t.gang && t.gang.name === 'VEX BOYS'), 'VEX BOYS');
+  eq(g.side.hudLine().slice(0, 11), 'RAMPAGE 0/6', 'HUD line');
+});
+test('side: rampage kill pays $100, clearing all pays $300 bonus', () => {
+  const g = sideGame();
+  g.player.pos.set(-180, 0, -180);
+  g.side.tryInteract();
+  for (const t of g.side.job.targets) t.dead = true;
+  g.side.update(0.1);
+  eq(g.save.cash, 250 + 600 + 300, '6 kills + bonus');
+  eq(g.save.stats.sideEarned, 900, 'sideEarned');
+  eq(g.save.stats.sideDone, 1, 'sideDone');
+  eq(g.side.job, null, 'job ends');
+  ok(g.notes.some((n) => n.includes('Rampage cleared')), 'clear toast');
+});
+test('side: rampage timeout removes survivors, no bonus', () => {
+  const g = sideGame();
+  g.player.pos.set(-180, 0, -180);
+  g.side.tryInteract();
+  const targets = g.side.job.targets;
+  targets[0].dead = true;
+  targets[1].dead = true;
+  g.side.update(59.9);
+  eq(g.save.cash, 250 + 200, '2 kills paid, no bonus yet');
+  g.side.update(0.2); // timer hits 0
+  eq(g.side.job, null, 'job ends on timeout');
+  eq(g.save.cash, 450, 'no bonus on timeout');
+  ok(!g.peds.peds.some((p) => targets.includes(p)), 'survivors removed');
+});
+test('side: jump pays by speed tier, hop fires, cooldown blocks retrigger', () => {
+  const g = sideGame();
+  const car = g.spawnCar('furia', 0xf2c230, -66, 0, Math.PI / 2);
+  g.enterCar(car);
+  car.speed = 26;
+  for (let i = 0; i < 40 && g.save.cash === 250; i++) {
+    car.drive(0.05, 1, 0, g.world.colliders);
+    g.side.update(0.05);
+  }
+  eq(g.save.cash, 250 + 300, '26 m/s over the ramp pays $300');
+  ok(car.hopT > 0, 'hop launched');
+  eq(g.save.stats.sideDone, 1, 'jump counts as done');
+  // Still on the ramp, still fast: the 20 s cooldown blocks a second payout.
+  car.speed = 31;
+  g.side.update(0.1);
+  eq(g.save.cash, 550, 'no double payout during cooldown');
+});
+test('side: jump tiers 31 m/s pays $500, 19 m/s pays $150, under 18 pays nothing', () => {
+  for (const [speed, award] of [[31, 500], [19, 150], [10, 0]]) {
+    const g = sideGame();
+    const car = g.spawnCar('furia', 0xf2c230, -60, 0, Math.PI / 2);
+    g.enterCar(car);
+    car.speed = speed;
+    g.side.update(0.1);
+    eq(g.save.cash, 250 + award, speed + ' m/s pays $' + award);
+  }
+});
+test('side: Car.hop raises the mesh and settles', () => {
+  const g = fakeGame();
+  const car = g.spawnCar('furia', 0xf2c230, 0, 0, 0);
+  eq(car.mesh.position.y, 0, 'on the ground');
+  car.hop();
+  car.drive(0.45, 0, 0, g.world.colliders); // hopT 0.9 -> 0.45
+  car.drive(0, 0, 0, g.world.colliders); // sync at the peak: sin(pi/2) = 1
+  ok(car.mesh.position.y > 2, 'mesh airborne at peak, y=' + car.mesh.position.y.toFixed(2));
+  eq(car.pos.y, 0, 'logical pos stays on the ground');
+  for (let i = 0; i < 20; i++) car.drive(0.1, 0, 0, g.world.colliders);
+  eq(car.hopT, 0, 'hop ends');
+  eq(car.mesh.position.y, 0, 'mesh settles back');
+});
+test('side: vigilante spawns a target in allCars, wrecking it pays $600', () => {
+  const g = sideGame();
+  g.player.pos.set(180, 0, -150);
+  eq(g.side.tryInteract(), true, 'E takes the tip');
+  const car = g.side.vigTarget;
+  ok(car && car.kind === 'vigilante', 'target is a vigilante car');
+  ok(g.allCars().includes(car), 'target is in allCars (rammable)');
+  const x0 = car.pos.x, z0 = car.pos.z;
+  g.side.update(0.1);
+  ok(car.pos.x !== x0 || car.pos.z !== z0, 'target flees');
+  car.damage(200);
+  g.side.update(0.1);
+  eq(g.save.cash, 250 + 600, '+$600 for the wreck');
+  eq(g.side.vigTarget, null, 'target cleared');
+  eq(g.side.job, null, 'job ends');
+});
+test('side: jacking the getaway car blows the job, car becomes traffic', () => {
+  const g = sideGame();
+  g.player.pos.set(180, 0, -150);
+  g.side.tryInteract();
+  const car = g.side.vigTarget;
+  g.enterCar(car);
+  g.side.update(0.1);
+  eq(g.side.job, null, 'job blown');
+  eq(car.kind, 'traffic', 'car joins traffic');
+  ok(g.traffic.cars.includes(car), 'in the traffic list');
+  eq(g.save.cash, 250, 'no payout');
+});
+test('side: payphone job runs Marina pickup to Docks delivery, pays $350', () => {
+  const g = sideGame();
+  g.player.pos.set(-138, 0, 150);
+  eq(g.side.tryInteract(), true, 'E answers the payphone');
+  eq(g.side.job.kind, 'phone', 'phone job');
+  eq(g.side.hudLine().slice(0, 5), 'PHONE', 'HUD line');
+  g.player.pos.set(180, 0, 120);
+  g.side.update(0.1);
+  eq(g.side.job.step, 1, 'pickup advances the step');
+  g.player.pos.set(180, 0, -150);
+  g.side.update(0.1);
+  eq(g.side.job, null, 'delivery completes the job');
+  eq(g.save.cash, 250 + 350, '+$350');
+  eq(g.save.stats.sideDone, 1, 'sideDone');
+});
+test('side: payphone rings near the Safehouse when the line is free', () => {
+  const g = sideGame();
+  g.player.pos.set(-140, 0, 140);
+  g.side.update(0.1);
+  ok(g.notes.some((n) => n.includes('ringing')), 'ring toast');
+});
+test('side: E does nothing far from spots, or from inside a car', () => {
+  const g = sideGame();
+  eq(g.side.prompt(), null, 'no prompt in the open');
+  eq(g.side.tryInteract(), false, 'no job in the open');
+  const car = g.spawnCar('furia', 0xf2c230, -180, 0, Math.PI / 2);
+  g.player.pos.set(-180, 0, -180);
+  g.enterCar(car);
+  eq(g.side.tryInteract(), false, 'no E job from inside a car');
+  eq(g.side.prompt(), null, 'no prompt from inside a car');
+});
+test('side: all spots are reachable on foot', () => {
+  const g = fakeGame();
+  const spots = [
+    [-180, -180], [180, -150], [-138, 150], [180, 120],
+    [-60, 0], [180, -60], [-120, 120],
+  ];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    spots.push([-180 + Math.sin(a) * 14, -180 + Math.cos(a) * 14]);
+  }
+  for (const [x, z] of spots) ok(reachable(g.world, x, z, 8), 'reachable (' + x + ',' + z + ')');
 });
 
 // ---------------------------------------------------------------------------

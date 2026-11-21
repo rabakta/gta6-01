@@ -8,7 +8,7 @@
 import { SAVE_KEY, MISSION_META, WEAPONS, COLLECTIBLES } from './config.js';
 import { propEntry } from './properties.js';
 
-export const SAVE_VERSION = 4; // v4: the save gains owned businesses
+export const SAVE_VERSION = 5; // v5: side-activity stats
 
 export function defaultSave() {
   return {
@@ -39,6 +39,9 @@ export function defaultSave() {
       packagesFound: 0,
       // v4: rent collected from owned businesses.
       bizEarned: 0,
+      // v5: side activities (rampage, jumps, vigilante, payphone).
+      sideDone: 0,
+      sideEarned: 0,
     },
   };
 }

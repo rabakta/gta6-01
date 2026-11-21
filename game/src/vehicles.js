@@ -407,6 +407,7 @@ export class Car {
     this.health = 100;
     this.smoking = false;
     this.dead = false;
+    this.hopT = 0; // stunt-jump air time: 0 = on the ground
     this.kind = 'traffic';
     this.driver = null; // 'player' when the player sits in it
     this.ai = null; // traffic / police brain state
@@ -490,10 +491,14 @@ export class Car {
       const spin = (this.speed * dt) / 0.36;
       for (const w of ud.wheels) w.rotation.x += spin;
     }
+    if (this.hopT > 0) this.hopT = Math.max(0, this.hopT - dt);
   }
 
   syncMesh() {
     this.mesh.position.copy(this.pos);
+    // Stunt-jump hop: a scripted parabola on the mesh only — the logical
+    // pos stays on the ground, so colliders never see the car airborne.
+    if (this.hopT > 0) this.mesh.position.y += Math.sin((1 - this.hopT / 0.9) * Math.PI) * 2.2;
     this.mesh.rotation.y = this.heading;
     // Lean into the turn, like a car body does. A bike leans hard — seven
     // times the car lean — so a weaving Moto reads as a bike, not a car.
@@ -526,6 +531,9 @@ export class Car {
     this.health = this.maxHealth;
     this.smoking = false;
   }
+
+  // Launch the scripted stunt-jump hop (0.9 s, peaks ~2.2 m).
+  hop() { this.hopT = 0.9; }
 }
 
 // Boats: hull + cabin from primitives, no AI drivers ever (CR-1: a

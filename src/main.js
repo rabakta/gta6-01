@@ -20,6 +20,7 @@ import { loadSave, writeSave, defaultSave, clearSave } from './save.js';
 import { shotParam, stageShot } from './shots.js';
 import { glowTexture } from './textures.js';
 import { PropertiesManager } from './properties.js';
+import { SideManager } from './side.js';
 
 class Game {
   constructor() {
@@ -67,6 +68,7 @@ class Game {
     // The side activities — taxi fares and collectible packages.
     this.taxi = new TaxiManager(this);
     this.props = new PropertiesManager(this);
+    this.side = new SideManager(this);
     this.collectibles = new CollectibleManager(this.scene, this.save);
     // Birds over the lighthouse and the pier, and the parked cars
     // Rio can steal (see spawnParked).
@@ -375,6 +377,7 @@ class Game {
     if (this.missions.rival) list.push(this.missions.rival);
     if (this.missions.tail) list.push(this.missions.tail);
     if (this.missions.targetCar) list.push(this.missions.targetCar);
+    if (this.side.vigTarget) list.push(this.side.vigTarget);
     for (const r of this.missions.racers) list.push(r);
     return list.filter((c) => !c.dead);
   }
@@ -457,6 +460,7 @@ class Game {
     if (this.shopOpen) return;
     // A fare pickup beats exiting the car.
     if (this.taxi.tryPickup()) return;
+    if (this.side.tryInteract()) return;
     if (this.player.inCar) { this.exitCar(); return; }
     if (this.nearShop) { this.openShop(this.nearShop); return; }
     const car = this.nearestCar(3.4);
@@ -962,6 +966,7 @@ class Game {
     this.pickups.update(dt, p.pos, this);
     this.taxi.update(dt);
     this.props.update(dt);
+    this.side.update(dt);
     this.collectibles.update(dt, p.pos, this);
     this.combat.update(dt);
     this.particles.update(dt);
@@ -1057,6 +1062,7 @@ class Game {
     // Legacy prompt text (for compatibility)
     this.promptText = this.shopOpen ? null
       : this.taxi.offer ? 'E — Pick up ' + this.taxi.offer.name
+      : this.side.prompt() ? 'E — ' + this.side.prompt()
       : this.nearShop ? 'E — ' + this.nearShop.name + ': ' + this.nearShop.blurb
       : this.nearCar ? 'E — Steal the ' + this.nearCar.def.label : null;
 
@@ -1097,6 +1103,7 @@ class Game {
       radio: this.audio.stationName(),
       radioLine: this.audio.radioLine(),
       biz: this.props.hudLine(),
+      side: this.side.hudLine(),
       bizOwned: this.props.owned(),
       objective: this.objectiveText(),
       clockSec: this.clockSec % 86400,
