@@ -608,8 +608,8 @@ export function stageShot(game, shot) {
     g.player.pos.copy(car.pos);
     g.player.heading = car.heading;
     g.player.camYaw = car.heading + Math.PI / 2; // 90 deg side view
-    g.player.camPitch = 0.2;
-    g.player.camDist = 16;
+    g.player.camPitch = 0.12; // low, near road level, like the key art
+    g.player.camDist = 11; // close: the car fills the frame
     g.keys.KeyW = true;
     const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
     for (const c of [...g.traffic.cars]) {
@@ -641,7 +641,7 @@ export function stageShot(game, shot) {
     }
     g.police.clearRoadblocks();
     g.police.spawnRoadblock(g.player.pos, g.player.heading, 60);
-    g.tod = 0.79;
+    g.tod = 0.72; // golden hour: sun still up (0.79 was past sunset, black)
     g.updateTimeOfDay(0);
   } else if (shot === 'chase-ambush-rear') {
     // CHASE AMBUSH — Rear Pursuit View (police POV)
@@ -702,7 +702,7 @@ export function stageShot(game, shot) {
     car.speed = 0;
     g.player.pos.set(car.pos.x - 2.5, 1.6, car.pos.z + 1.8);
     g.player.heading = Math.PI * 0.25;
-    g.player.camYaw = Math.PI * 0.25 + Math.PI;
+    g.player.camYaw = Math.PI * 0.25 + Math.PI * 0.75; // rear three-quarter, not a flat chase cam
     g.player.camPitch = 0.25;
     g.player.camDist = 18; // wide
     g.save.currentWeapon = 'smg';
@@ -733,7 +733,7 @@ export function stageShot(game, shot) {
     g.particles.smoke({ x: -50, y: 0.5, z: 50 }, 5);
     g.particles.sparks({ x: -50, y: 0.5, z: 50 }, 8);
     g.traffic.spawn(3, { x: -100, z: -100 }, 60);
-    g.tod = 0.92; g.updateTimeOfDay(0);
+    g.tod = 0.5; g.updateTimeOfDay(0); // noon: the wide shot faces away from the low sun, dusk left it black
   } else if (shot === 'gang-war-dutch') {
     // GANG WAR — Dutch Angle (tension, chaos)
     // Tilted horizon, close over-shoulder, immediate threat
@@ -929,7 +929,7 @@ export function stageShot(game, shot) {
       const ring = new THREE.Mesh(ringGeo, ringMat); ring.rotation.x = -Math.PI / 2; ring.position.set(startX, 0.1, startZ + 40 + i * 35); g.scene.add(ring);
     }
     g.traffic.cars.forEach(c => g.scene.remove(c.mesh)); g.traffic.cars = [];
-    g.tod = 0.0; g.updateTimeOfDay(0);
+    g.tod = 0.5; g.updateTimeOfDay(0); // noon: the pole shot faces away from the low sun, dusk left it black
   } else if (shot === 'midnight-grand-prix-wide') {
     // MIDNIGHT GRAND PRIX — Wide Grid (full 8-car symmetry)
     // High angle, centered, neon Coral Row stretching both ways
@@ -962,7 +962,7 @@ export function stageShot(game, shot) {
       ped.position.set(startX + side * 14, 0.7, startZ + (i - 5.5) * 5.5); ped.rotation.y = -side * Math.PI / 2; g.scene.add(ped);
     }}
     g.traffic.cars.forEach(c => g.scene.remove(c.mesh)); g.traffic.cars = [];
-    g.tod = 0.0; g.updateTimeOfDay(0);
+    g.tod = 0.72; g.updateTimeOfDay(0); // golden hour (0.0 was midnight, black)
   } else if (shot === 'midnight-grand-prix-neon') {
     // MIDNIGHT GRAND PRIX — Neon Reflection Close-Up
     // Extreme low angle, clearcoat reflecting Coral Row signs, start light bokeh

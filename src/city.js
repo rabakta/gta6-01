@@ -1,8 +1,6 @@
 // BRISA BAY — the city: roads, buildings, beach, sea, palms, lamps,
-// billboards, bridge. One seed, so the map is identical every run.
-// Facades per storey, lit windows, parapets, varied roofs; ground detail
-// (crosswalks, plazas, kerbs, wet sand). The building loop consumes its
-// seeded rng in exactly the earlier order — no new rng() calls inside it.
+// billboards, bridge. One seed, so the map is identical every run; the
+// building loop consumes its seeded rng in exactly the earlier order.
 import * as THREE from 'three';
 import { CITY, PALETTE, SHOPS, BUS_STOPS, VENDORS, GANGS } from './config.js';
 import { mulberry32, pick } from './utils.js';
@@ -691,49 +689,91 @@ export function buildCity(scene) {
   scene.add(board3Halo);
   v5counts.halos++;
 
-  // Vegetation system: multiple tree types for variety
-  // Palm trees (beach/tropical)
+  // Coconut palms, the only tree: shared bent trunk (coconuts merged in)
+  // + shared crown of 7 drooping fronds. 2 meshes/tree; trunk only casts.
   const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: 0.9, metalness: 0.0 });
-  const palmFrondMat = new THREE.MeshStandardMaterial({ color: 0x3f7a44, side: THREE.DoubleSide, roughness: 0.8, metalness: 0.0, alphaTest: 0.5 });
-  const palmTrunkGeo = new THREE.CylinderGeometry(0.35, 0.55, 7, 6);
-  const palmFrondGeo = new THREE.ConeGeometry(3.4, 1.6, 7);
-  
-  // Broadleaf trees (city parks, streets)
-  const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.95, metalness: 0.0 });
-  const treeLeafMat = new THREE.MeshStandardMaterial({ color: 0x4a7a44, side: THREE.DoubleSide, roughness: 0.85, metalness: 0.0, alphaTest: 0.5 });
-  const treeTrunkGeo = new THREE.CylinderGeometry(0.4, 0.7, 5, 6);
-  const treeLeafGeo = new THREE.SphereGeometry(3.5, 8, 6);
-  
-  // Pine trees (northern areas)
-  const pineTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, roughness: 0.95, metalness: 0.0 });
-  const pineLeafMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, side: THREE.DoubleSide, roughness: 0.9, metalness: 0.0 });
-  const pineTrunkGeo = new THREE.CylinderGeometry(0.3, 0.5, 6, 6);
-  const pineLeafGeo = new THREE.ConeGeometry(2.5, 4, 6);
-
-  function plantPalm(x, z, s = 1) {
+  const palmFrondMat = new THREE.MeshStandardMaterial({ color: 0x3f7a44, side: THREE.DoubleSide, roughness: 0.8, metalness: 0.0 });
+  function mergeGeo(gs) {
+    const pos = [], nor = [], uv = [], idx = [];
+    let o = 0;
+    for (const g of gs) {
+      pos.push(...g.attributes.position.array);
+      nor.push(...g.attributes.normal.array);
+      uv.push(...g.attributes.uv.array);
+      for (let i = 0; i < g.index.count; i++) idx.push(g.index.array[i] + o);
+      o += g.attributes.position.count;
+    }
+    const m = new THREE.BufferGeometry();
+    m.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    m.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    m.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    m.setIndex(idx);
+    return m;
+  }
+  function palmTrunkGeo() {
+    const t = new THREE.CylinderGeometry(0.32, 0.5, 7, 6, 4);
+    const p = t.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const k = (p.getY(i) + 3.5) / 7;
+      p.setX(i, p.getX(i) + k * k * 0.9);
+    }
+    t.computeVertexNormals();
+    const nuts = [];
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const s = new THREE.SphereGeometry(0.32, 6, 5);
+      s.translate(0.9 + Math.cos(a) * 0.32, 3.05, Math.sin(a) * 0.32);
+      nuts.push(s);
+    }
+    return mergeGeo([t, ...nuts]);
+  }
+  function palmCrownGeo() {
+    const pos = [], idx = [];
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a), px = -dz, pz = dx;
+      const v = [
+        [dx * 0.4 + px * 0.28, 0.15, dz * 0.4 + pz * 0.28],
+        [dx * 0.4 - px * 0.28, 0.15, dz * 0.4 - pz * 0.28],
+        [dx * 1.7 + px * 0.22, -0.35, dz * 1.7 + pz * 0.22],
+        [dx * 1.7 - px * 0.22, -0.35, dz * 1.7 - pz * 0.22],
+        [dx * 3.1, -1.5, dz * 3.1],
+      ];
+      const b = pos.length / 3;
+      for (const q of v) pos.push(q[0], q[1], q[2]);
+      idx.push(b, b + 1, b + 3, b, b + 3, b + 2, b + 2, b + 3, b + 4);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+  const palmTrunk = palmTrunkGeo();
+  const palmCrown = palmCrownGeo();
+  function plantPalmAt(x, z, s, half) {
     const g = new THREE.Group();
-    const trunk = new THREE.Mesh(palmTrunkGeo, palmTrunkMat);
+    const trunk = new THREE.Mesh(palmTrunk, palmTrunkMat);
     trunk.position.y = 3.5;
-    trunk.rotation.z = (rng() - 0.5) * 0.16;
     trunk.castShadow = true;
     trunk.receiveShadow = true;
-    const fronds = new THREE.Mesh(palmFrondGeo, palmFrondMat);
-    fronds.position.y = 7.4;
-    fronds.scale.y = 0.55;
-    fronds.castShadow = true;
-    fronds.receiveShadow = true;
-    g.add(trunk, fronds);
+    const crown = new THREE.Mesh(palmCrown, palmFrondMat);
+    crown.position.set(0.9, 7, 0);
+    crown.receiveShadow = true;
+    g.add(trunk, crown);
     g.position.set(x, 0, z);
+    g.rotation.y = rng() * Math.PI * 2;
     g.scale.setScalar(s);
     scene.add(g);
-    world.palms.push(g);
-    colliders.push({ minX: x - 0.6, maxX: x + 0.6, minZ: z - 0.6, maxZ: z + 0.6 });
+    colliders.push({ minX: x - half, maxX: x + half, minZ: z - half, maxZ: z + half });
+    return g;
   }
   
-  // Trees never stand in a road: a trunk on a road centre line pins any
-  // car driving that line (the sidewalk loop, the park rings and the
-  // northern pines all land on cross-roads otherwise). Nudge a position
-  // off any road line (within 3 m) by 12 m into the block.
+  function plantPalm(x, z, s = 1) {
+    world.palms.push(plantPalmAt(x, z, s, 0.6));
+  }
+  
+  // No tree on a road: a trunk on a centre line pins any car on that line.
+  // Nudge a position off any road line (within 3 m) by 12 m into the block.
   function offRoad(x, z) {
     for (const l of roadLines()) {
       if (Math.abs(x - l) < 3) x += 12;
@@ -744,39 +784,12 @@ export function buildCity(scene) {
 
   function plantTree(x, z, s = 1) {
     [x, z] = offRoad(x, z);
-    const g = new THREE.Group();
-    const trunk = new THREE.Mesh(treeTrunkGeo, treeTrunkMat);
-    trunk.position.y = 2.5;
-    trunk.castShadow = true;
-    trunk.receiveShadow = true;
-    const leaves = new THREE.Mesh(treeLeafGeo, treeLeafMat);
-    leaves.position.y = 6.5;
-    leaves.scale.set(1, 0.7, 1);
-    leaves.castShadow = true;
-    leaves.receiveShadow = true;
-    g.add(trunk, leaves);
-    g.position.set(x, 0, z);
-    g.scale.setScalar(s);
-    scene.add(g);
-    colliders.push({ minX: x - 1.2, maxX: x + 1.2, minZ: z - 1.2, maxZ: z + 1.2 });
+    plantPalmAt(x, z, s, 1.2);
   }
   
   function plantPine(x, z, s = 1) {
     [x, z] = offRoad(x, z);
-    const g = new THREE.Group();
-    const trunk = new THREE.Mesh(pineTrunkGeo, pineTrunkMat);
-    trunk.position.y = 3;
-    trunk.castShadow = true;
-    trunk.receiveShadow = true;
-    const leaves = new THREE.Mesh(pineLeafGeo, pineLeafMat);
-    leaves.position.y = 6;
-    leaves.castShadow = true;
-    leaves.receiveShadow = true;
-    g.add(trunk, leaves);
-    g.position.set(x, 0, z);
-    g.scale.setScalar(s);
-    scene.add(g);
-    colliders.push({ minX: x - 1, maxX: x + 1, minZ: z - 1, maxZ: z + 1 });
+    plantPalmAt(x, z, s, 1);
   }
 
   // Palm trees along the beach - MORE DENSE
