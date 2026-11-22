@@ -799,20 +799,20 @@ export function buildCity(scene) {
     plantPalmAt(x, z, s, 1);
   }
 
-  // Palm trees along the beach - MORE DENSE
-  for (let z = -200; z <= 200; z += 18) plantPalm(216 + rng() * 10, z, 0.9 + rng() * 0.5);
-  for (let z = -200; z <= 200; z += 18) plantPalm(228 + rng() * 8, z, 0.8 + rng() * 0.4);
+  // Palm trees along the beach - THIN
+  for (let z = -200; z <= 200; z += 36) plantPalm(216 + rng() * 10, z, 0.9 + rng() * 0.5);
+  for (let z = -200; z <= 200; z += 36) plantPalm(228 + rng() * 8, z, 0.8 + rng() * 0.4);
   // Avenues with palms
-  for (let x = -180; x <= 180; x += 30) {
+  for (let x = -180; x <= 180; x += 60) {
     plantPalm(x + 9, -195, 1 + rng() * 0.3);
     plantPalm(x - 9, 195, 1 + rng() * 0.3);
   }
   // Palm cluster around the pier
-  for (let i = 0; i < 12; i++) plantPalm(220 + rng() * 20, -80 + rng() * 80, 0.9 + rng() * 0.4);
-  
+  for (let i = 0; i < 6; i++) plantPalm(220 + rng() * 20, -80 + rng() * 80, 0.9 + rng() * 0.4);
+
   // Broadleaf trees in city - along streets and in plazas
   for (const l of lines) {
-    for (let v = -180; v <= 180; v += 40) {
+    for (let v = -180; v <= 180; v += 80) {
       // Trees on sidewalks (12m from road center)
       plantTree(l + 12, v, 0.9 + rng() * 0.3);
       plantTree(l - 12, v, 0.9 + rng() * 0.3);
@@ -822,7 +822,7 @@ export function buildCity(scene) {
   }
   
   // Pine trees in northern areas
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 15; i++) {
     const x = -180 + rng() * 100;
     const z = 50 + rng() * 120;
     plantPine(x, z, 0.8 + rng() * 0.5);
@@ -830,7 +830,7 @@ export function buildCity(scene) {
   
   // Park trees - central plaza areas
   for (const [px, pz] of [[0, 0], [0, 60], [60, 0], [60, 60], [-60, -60], [-60, 60], [60, -60]]) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       const angle = (i / 6) * Math.PI * 2;
       const r = 8 + rng() * 4;
       plantTree(px + Math.sin(angle) * r, pz + Math.cos(angle) * r, 1 + rng() * 0.3);
